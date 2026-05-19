@@ -2,10 +2,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { applyFilters, filtersToRpcArgs } from "./filters";
 import type { Filters, MapPointArrays, Restaurant } from "./types";
 
+// Slim column set — only what the visible table renders, plus id for keys
+// and joins. Fetching the wide row (cat_list, categories, location_name,
+// link, etc.) doubled wire size for no UI benefit; the Selected tab and
+// Sheets export hit fetchRestaurantsByIds for the full payload on demand.
 const LIST_COLS =
-  "id,name,address,city,province,postal_code,country,latitude,longitude," +
-  "website,phone,category,categories,cat_list,rating,ratings,price_range," +
-  "price_bucket,position,link,is_chain,dataset,location_name";
+  "id,name,address,city,province,category," +
+  "rating,ratings,price_bucket,website,phone";
 
 export type OverviewStats = {
   total: number;
