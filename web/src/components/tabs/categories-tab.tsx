@@ -7,6 +7,7 @@ import { postQuery } from "@/lib/fetcher";
 import { PlotlyChart } from "@/components/plotly-chart";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Layout } from "plotly.js";
 
 const BASE_LAYOUT: Partial<Layout> = {
@@ -21,13 +22,15 @@ export function CategoriesTab() {
   const filters = useAppStore((s) => s.filters);
   const [topN, setTopN] = useState(25);
 
-  const { data: top } = useSWR<{ rows: { category: string; count: number }[] }>(
+  const { data: top, isLoading: topLoading } = useSWR<{
+    rows: { category: string; count: number }[];
+  }>(
     ["top_categories", filters, topN],
     () => postQuery({ type: "top_categories", filters, topN }),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
 
-  const { data: scoreStats } = useSWR<{
+  const { data: scoreStats, isLoading: statsLoading } = useSWR<{
     rows: { category: string; count: number; avg_rating: number }[];
   }>(
     ["category_stats"],
@@ -37,6 +40,10 @@ export function CategoriesTab() {
 
   const counts = top?.rows ?? [];
   const scored = (scoreStats?.rows ?? []).slice().sort((a, b) => b.avg_rating - a.avg_rating);
+
+  if ((topLoading && !top) || (statsLoading && !scoreStats)) {
+    return <CategoriesSkeleton />;
+  }
 
   return (
     <div className="space-y-6">
@@ -122,6 +129,28 @@ function ChartCard({ title, children }: { title: string; children: React.ReactNo
     <div className="rounded-lg border border-border bg-card/40 p-4">
       <h3 className="text-sm font-semibold mb-3">{title}</h3>
       {children}
+    </div>
+  );
+}
+
+function CategoriesSkeleton() {
+  return (
+    <div className="space-y-6" aria-hidden>
+      <div className="grid gap-2 max-w-md">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-3 w-32" />
+          <Skeleton className="h-3 w-6" />
+        </div>
+        <Skeleton className="h-4 w-full" />
+      </div>
+      <div className="rounded-lg border border-border bg-card/40 p-4">
+        <Skeleton className="h-4 w-40 mb-3" />
+        <Skeleton className="w-full" style={{ height: 600 }} />
+      </div>
+      <div className="rounded-lg border border-border bg-card/40 p-4">
+        <Skeleton className="h-4 w-72 mb-3" />
+        <Skeleton className="w-full" style={{ height: 600 }} />
+      </div>
     </div>
   );
 }

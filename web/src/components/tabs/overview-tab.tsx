@@ -5,6 +5,7 @@ import { useAppStore } from "@/lib/store";
 import { postQuery } from "@/lib/fetcher";
 import { PlotlyChart } from "@/components/plotly-chart";
 import { MetricCard } from "@/components/metric-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { OverviewStats } from "@/lib/queries";
 import type { Layout } from "plotly.js";
 
@@ -24,7 +25,7 @@ export function OverviewTab() {
     { revalidateOnFocus: false, keepPreviousData: true },
   );
 
-  if (isLoading || !data) return <div className="text-muted-foreground">Loading…</div>;
+  if (isLoading || !data) return <OverviewSkeleton />;
 
   return (
     <div className="space-y-6">
@@ -178,6 +179,36 @@ function ChartCard({
     <div className="rounded-lg border border-border bg-card/40 p-4">
       <h3 className="text-sm font-semibold mb-3">{title}</h3>
       {children}
+    </div>
+  );
+}
+
+function ChartSkeleton({ height }: { height: number }) {
+  return (
+    <div className="rounded-lg border border-border bg-card/40 p-4">
+      <Skeleton className="h-4 w-40 mb-3" />
+      <Skeleton className="w-full" style={{ height }} />
+    </div>
+  );
+}
+
+function OverviewSkeleton() {
+  return (
+    <div className="space-y-6" aria-hidden>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-[76px] rounded-xl" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ChartSkeleton height={280} />
+        <ChartSkeleton height={280} />
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <ChartSkeleton height={360} />
+        <ChartSkeleton height={360} />
+      </div>
+      <ChartSkeleton height={300} />
     </div>
   );
 }

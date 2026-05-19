@@ -22,6 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronLeft, ChevronRight, Download } from "lucide-react";
 import type { Restaurant } from "@/lib/types";
 
@@ -62,6 +63,7 @@ export function DataTableTab() {
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const rows = useMemo(() => data?.rows ?? [], [data]);
+  const initialLoading = isLoading && !data;
 
   const csvHref = useMemo(() => {
     if (!rows.length) return null;
@@ -79,6 +81,10 @@ export function DataTableTab() {
     const blob = new Blob([`${header}\n${body}`], { type: "text/csv" });
     return URL.createObjectURL(blob);
   }, [rows]);
+
+  if (initialLoading) {
+    return <DataTableSkeleton />;
+  }
 
   return (
     <div className="space-y-4">
@@ -185,6 +191,46 @@ export function DataTableTab() {
           >
             Next <ChevronRight className="h-4 w-4" />
           </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DataTableSkeleton() {
+  return (
+    <div className="space-y-4" aria-hidden>
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="grid gap-2">
+          <Skeleton className="h-3 w-12" />
+          <Skeleton className="h-8 w-40" />
+        </div>
+        <Skeleton className="h-4 w-24 mb-2" />
+        <div className="flex-1" />
+        <Skeleton className="h-8 w-44" />
+      </div>
+      <Skeleton className="h-4 w-32" />
+      <div className="rounded-lg border border-border overflow-hidden">
+        <div className="flex gap-4 px-4 py-2.5 bg-card border-b border-border">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-3 flex-1 min-w-16" />
+          ))}
+        </div>
+        <div className="divide-y divide-border">
+          {Array.from({ length: 12 }).map((_, r) => (
+            <div key={r} className="flex gap-4 px-4 py-3">
+              {Array.from({ length: 8 }).map((_, c) => (
+                <Skeleton key={c} className="h-3.5 flex-1 min-w-16" />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center justify-between">
+        <Skeleton className="h-4 w-28" />
+        <div className="flex gap-2">
+          <Skeleton className="h-7 w-20" />
+          <Skeleton className="h-7 w-20" />
         </div>
       </div>
     </div>

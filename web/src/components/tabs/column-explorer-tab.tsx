@@ -15,6 +15,7 @@ import {
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
 import { MetricCard } from "@/components/metric-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Layout } from "plotly.js";
 
 const COLUMNS = [
@@ -43,7 +44,7 @@ export function ColumnExplorerTab() {
   const [col, setCol] = useState("category");
   const [topN, setTopN] = useState(20);
 
-  const { data } = useSWR<ColumnData>(
+  const { data, isLoading } = useSWR<ColumnData>(
     ["column", filters, col, topN],
     () => postQuery({ type: "column", filters, col, topN }),
     { revalidateOnFocus: false, keepPreviousData: true },
@@ -78,7 +79,9 @@ export function ColumnExplorerTab() {
         </div>
       </div>
 
-      {data && (
+      {isLoading && !data ? (
+        <ColumnSkeleton />
+      ) : data ? (
         <>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <MetricCard value={data.total.toLocaleString()} label="Sampled" />
@@ -118,7 +121,23 @@ export function ColumnExplorerTab() {
             />
           </div>
         </>
-      )}
+      ) : null}
     </div>
+  );
+}
+
+function ColumnSkeleton() {
+  return (
+    <>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3" aria-hidden>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-[76px] rounded-xl" />
+        ))}
+      </div>
+      <div className="rounded-lg border border-border bg-card/40 p-4" aria-hidden>
+        <Skeleton className="h-4 w-32 mb-3" />
+        <Skeleton className="w-full" style={{ height: 480 }} />
+      </div>
+    </>
   );
 }
