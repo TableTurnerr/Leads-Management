@@ -113,6 +113,12 @@ def ingest_restaurants():
     df = pd.read_csv(MAIN_CSV, encoding="utf-8-sig", low_memory=False)
     print(f"Loaded {len(df):,} rows.")
 
+    before = len(df)
+    df = df[df["name"].notna() & (df["name"].astype(str).str.strip() != "")].copy()
+    dropped = before - len(df)
+    if dropped:
+        print(f"Dropped {dropped:,} rows with missing name.")
+
     df["country"] = df["country"].replace({"United States": "US", "United Kingdom": "UK"})
     for col in ["rating", "latitude", "longitude"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
