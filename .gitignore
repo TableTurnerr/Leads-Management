@@ -1,0 +1,58 @@
+# dependencies
+**/node_modules/
+.pnp
+.pnp.*
+.yarn/*
+
+# next.js
+**/.next/
+**/out/
+**/build/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/
+
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# typescript build info
+*.tsbuildinfo
+**/next-env.d.ts
+
+# vercel
+.vercel
+
+# coverage
+coverage/
+
+# large data dumps that don't belong in git
+processed/
+
+# Database CSVs — too large for GitHub (172MB main file). Live in Supabase
+# post-ingestion. Keep only the small fast-food chain reference list.
+Database/*.csv
+!Database/Top 50 Fast-Food Chains in USA.csv
