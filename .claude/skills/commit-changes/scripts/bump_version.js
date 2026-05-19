@@ -24,15 +24,22 @@ try {
 
   // Handle normalization to X.Y
   let parts = version.split('.').map(Number);
-  if (normalize || parts.length > 2) {
+  if (normalize) {
     parts = [parts[0] || 1, parts[1] || 0];
   }
+
+  const isSemver = !normalize && parts.length === 3;
 
   if (bumpType === 'major') {
     parts[0] += 1;
     parts[1] = 0;
+    if (isSemver) parts[2] = 0;
   } else if (bumpType === 'patch') {
-    parts[1] += 1;
+    if (isSemver) {
+      parts[2] += 1;
+    } else {
+      parts[1] += 1;
+    }
   }
 
   const newVersion = parts.join('.');
