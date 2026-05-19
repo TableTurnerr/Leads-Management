@@ -1,10 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import useSWR from "swr";
 import { useAppStore } from "@/lib/store";
+import { postQuery } from "@/lib/fetcher";
 import { Button } from "@/components/ui/button";
 import { MetricCard } from "@/components/metric-card";
 import { PlotlyChart } from "@/components/plotly-chart";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -41,11 +44,24 @@ const SHOW_COLS: { key: keyof Restaurant; label: string }[] = [
 ];
 
 export function SelectedTab() {
-  const selection = useAppStore((s) => s.selection);
+  const selectedIds = useAppStore((s) => s.selectedIds);
   const clearSelection = useAppStore((s) => s.clearSelection);
   const [sending, setSending] = useState(false);
 
-  if (!selection.length) {
+  const idsKey = useMemo(
+    () => (selectedIds.length ? [...selectedIds].sort((a, b) => a - b).join(",") : null),
+    [selectedIds],
+  );
+
+  const { data, isLoading } = useSWR<{ rows: Restaurant[] }>(
+    idsKey ? ["by_ids", idsKey] : null,
+    () => postQuery<{ rows: Restaurant[] }>({ type: "by_ids", ids: selectedIds }),
+    { revalidateOnFocus: false, keepPreviousData: true },
+  );
+
+  const rows = useMemo(() => data?.rows ?? [], [data]);
+
+  if (!selectedIds.length) {
     return (
       <div className="rounded-lg border border-dashed border-border p-10 text-center text-muted-foreground">
         <p>No restaurants selected.</p>
@@ -57,13 +73,34 @@ export function SelectedTab() {
     );
   }
 
-  const ratings = selection.map((s) => s.rating).filter((v): v is number => v != null);
+  if (isLoading && !data) {
+    return (
+      <div className="space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Skeleton className="h-7 w-64" />
+          <div className="flex gap-2">
+            <Skeleton className="h-9 w-36" />
+            <Skeleton className="h-9 w-36" />
+            <Skeleton className="h-9 w-32" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-[400px] w-full" />
+      </div>
+    );
+  }
+
+  const ratings = rows.map((s) => s.rating).filter((v): v is number => v != null);
   const avg = ratings.length ? ratings.reduce((a, b) => a + b, 0) / ratings.length : null;
-  const totalReviews = selection.reduce((sum, s) => sum + (s.ratings ?? 0), 0);
-  const cities = new Set(selection.map((s) => s.city).filter(Boolean)).size;
+  const totalReviews = rows.reduce((sum, s) => sum + (s.ratings ?? 0), 0);
+  const cities = new Set(rows.map((s) => s.city).filter(Boolean)).size;
 
   const priceCounts = new Map<string, number>();
-  for (const r of selection) {
+  for (const r of rows) {
     const p = r.price_bucket ?? "Unknown";
     if (p === "Unknown") continue;
     priceCounts.set(p, (priceCounts.get(p) ?? 0) + 1);
@@ -77,7 +114,7 @@ export function SelectedTab() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          rows: selection.map((r) => ({
+          rows: rows.map((r) => ({
             id: r.id,
             name: r.name,
             address: r.address,
@@ -97,7 +134,7 @@ export function SelectedTab() {
       });
       const out = await res.json();
       if (!res.ok) throw new Error(out?.error ?? `Sheets webhook failed (${res.status})`);
-      toast.success(`Sent ${selection.length} restaurants to Sheets.`);
+      toast.success(`Sent ${rows.length} restaurants to Sheets.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
       toast.error(message);
@@ -108,7 +145,7 @@ export function SelectedTab() {
 
   function downloadCsv() {
     const header = SHOW_COLS.map((c) => c.label).join(",");
-    const body = selection
+    const body = rows
       .map((r) =>
         SHOW_COLS.map((c) => {
           const v = r[c.key];
@@ -131,14 +168,14 @@ export function SelectedTab() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-xl font-semibold">
-          {selection.length} restaurants selected
+          {selectedIds.length} restaurants selected
         </h2>
         <div className="flex gap-2">
-          <Button onClick={sendToSheets} disabled={sending}>
+          <Button onClick={sendToSheets} disabled={sending || !rows.length}>
             <Send className="h-4 w-4 mr-1" />
             {sending ? "Sending…" : "Send to Sheets"}
           </Button>
-          <Button variant="outline" onClick={downloadCsv}>
+          <Button variant="outline" onClick={downloadCsv} disabled={!rows.length}>
             <Download className="h-4 w-4 mr-1" />
             Download CSV
           </Button>
@@ -156,7 +193,7 @@ export function SelectedTab() {
       </p>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <MetricCard value={selection.length.toLocaleString()} label="Restaurants" />
+        <MetricCard value={rows.length.toLocaleString()} label="Restaurants" />
         <MetricCard value={avg != null ? avg.toFixed(2) : "—"} label="Avg Rating" />
         <MetricCard value={cities.toLocaleString()} label="Cities" />
         <MetricCard value={totalReviews.toLocaleString()} label="Total Reviews" />
@@ -225,7 +262,7 @@ export function SelectedTab() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {selection.map((r) => (
+            {rows.map((r) => (
               <TableRow key={r.id}>
                 {SHOW_COLS.map((c) => {
                   const v = r[c.key];
