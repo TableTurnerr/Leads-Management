@@ -19,13 +19,16 @@ const PLOT_BG = {
 
 export function OverviewTab() {
   const filters = useAppStore((s) => s.filters);
-  const { data, isLoading } = useSWR<OverviewStats>(
+  const { data } = useSWR<OverviewStats>(
     ["overview", filters],
     () => postQuery<OverviewStats>({ type: "overview", filters }),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
 
-  if (isLoading || !data) return <OverviewSkeleton />;
+  // Skeleton only when there's genuinely no data yet. With the persisted
+  // SWR cache, refresh-with-cache resolves synchronously, so gating on
+  // `isLoading` here would flash a skeleton even when we have data.
+  if (!data) return <OverviewSkeleton />;
 
   return (
     <div className="space-y-6">
