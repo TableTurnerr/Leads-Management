@@ -1,8 +1,9 @@
 {
-  "name": "web",
+  "name": "leads-management-tableturnerr",
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/kill-stale-postcss-workers.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

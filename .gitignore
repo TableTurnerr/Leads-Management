@@ -53,6 +53,4 @@ coverage/
 processed/
 
 # Database CSVs — too large for GitHub (172MB main file). Live in Supabase
-# post-ingestion. Keep only the small fast-food chain reference list.
 Database/*.csv
-!Database/Top 50 Fast-Food Chains in USA.csv
