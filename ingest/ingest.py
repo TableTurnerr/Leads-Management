@@ -1,11 +1,11 @@
 """Load Combined_Restaurants.csv + Top 50 Fast-Food Chains into Supabase.
 
-Reuses the bucket_price / fmt_phone / cat_list pipeline from explore.py so
-ingested data matches what the Streamlit app showed.
+Posts batches straight to PostgREST so we don't need supabase-py (which pulls
+in pyiceberg and friends and won't build on Python 3.14 without MSVC).
 
 Usage:
     pip install -r ingest/requirements.txt
-    cp ingest/.env.example ingest/.env  # fill in SUPABASE_URL + SERVICE_ROLE_KEY
+    cp ingest/.env.example ingest/.env   # fill SUPABASE_URL + SERVICE_ROLE_KEY
     python ingest/ingest.py
 """
 from __future__ import annotations
@@ -13,11 +13,12 @@ from __future__ import annotations
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
+import httpx
 import pandas as pd
 from dotenv import load_dotenv
-from supabase import create_client
 from tqdm import tqdm
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -26,12 +27,21 @@ MAIN_CSV = DB_DIR / "Combined_Restaurants.csv"
 CHAINS_CSV = DB_DIR / "Top 50 Fast-Food Chains in USA.csv"
 
 BATCH_SIZE = 1000
+TIMEOUT = 60.0
 
 load_dotenv(ROOT / "ingest" / ".env")
-SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_ROLE = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 
-sb = create_client(SUPABASE_URL, SERVICE_ROLE)
+REST = f"{SUPABASE_URL}/rest/v1"
+HEADERS = {
+    "apikey": SERVICE_ROLE,
+    "Authorization": f"Bearer {SERVICE_ROLE}",
+    "Content-Type": "application/json",
+    "Prefer": "resolution=merge-duplicates,return=minimal",
+}
+
+client = httpx.Client(headers=HEADERS, timeout=TIMEOUT)
 
 
 def bucket_price(p) -> str:
@@ -76,17 +86,30 @@ def load_chain_names() -> set[str]:
     return {str(n).strip().lower() for n in chains[col].dropna()}
 
 
+def post(table: str, rows: list[dict], on_conflict: str | None = None) -> None:
+    url = f"{REST}/{table}"
+    params = {"on_conflict": on_conflict} if on_conflict else None
+    for attempt in range(3):
+        r = client.post(url, json=rows, params=params)
+        if r.status_code < 300:
+            return
+        if r.status_code in (429, 503) and attempt < 2:
+            time.sleep(2 ** attempt)
+            continue
+        raise RuntimeError(f"{r.status_code} from {table}: {r.text[:500]}")
+
+
 def ingest_chains():
     chains = pd.read_csv(CHAINS_CSV, encoding="utf-8-sig")
     col = chains.columns[0]
     names = [str(n).strip() for n in chains[col].dropna() if str(n).strip()]
     rows = [{"name": n} for n in sorted(set(names))]
-    print(f"Inserting {len(rows)} fast-food chain names…")
-    sb.table("fast_food_chains").upsert(rows).execute()
+    print(f"Inserting {len(rows)} fast-food chain names...")
+    post("fast_food_chains", rows, on_conflict="name")
 
 
 def ingest_restaurants():
-    print(f"Reading {MAIN_CSV.name}…")
+    print(f"Reading {MAIN_CSV.name}...")
     df = pd.read_csv(MAIN_CSV, encoding="utf-8-sig", low_memory=False)
     print(f"Loaded {len(df):,} rows.")
 
@@ -113,18 +136,18 @@ def ingest_restaurants():
     ]
     df = df[cols]
 
-    # NaN → None for JSON serialization (Supabase REST won't accept NaN)
     df = df.astype(object).where(pd.notna(df), None)
     records = df.to_dict(orient="records")
 
-    print(f"Upserting {len(records):,} restaurants in batches of {BATCH_SIZE}…")
+    print(f"Upserting {len(records):,} restaurants in batches of {BATCH_SIZE}...")
     with tqdm(total=len(records), unit="row") as bar:
         for i in range(0, len(records), BATCH_SIZE):
             batch = records[i : i + BATCH_SIZE]
-            sb.table("restaurants").upsert(
+            post(
+                "restaurants",
                 batch,
                 on_conflict="dataset,name,address,city,province",
-            ).execute()
+            )
             bar.update(len(batch))
 
 
