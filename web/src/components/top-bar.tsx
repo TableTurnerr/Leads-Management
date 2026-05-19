@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { MapPinned, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { RefreshDataButton } from "@/components/refresh-data-button";
 
 function initialsFromEmail(email: string) {
   const local = email.split("@")[0] ?? "";
@@ -37,6 +38,7 @@ export function TopBar({ userEmail }: { userEmail: string }) {
         >
           {initials}
         </span>
+        <RefreshDataButton />
         <Button
           variant="ghost"
           size="icon-sm"
