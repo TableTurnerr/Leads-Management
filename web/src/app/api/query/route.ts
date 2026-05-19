@@ -12,7 +12,7 @@ import type { Filters } from "@/lib/types";
 
 type Body =
   | { type: "overview"; filters: Filters }
-  | { type: "map"; filters: Filters }
+  | { type: "map"; filters: Filters; limit?: number }
   | {
       type: "list";
       filters: Filters;
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
         return NextResponse.json(await fetchOverview(supabase, body.filters));
       case "map":
         return NextResponse.json({
-          points: await fetchMapPoints(supabase, body.filters),
+          points: await fetchMapPoints(supabase, body.filters, body.limit),
         });
       case "list":
         return NextResponse.json(

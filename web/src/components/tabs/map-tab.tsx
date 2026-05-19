@@ -1,13 +1,20 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { useAppStore } from "@/lib/store";
 import { postQuery } from "@/lib/fetcher";
 import { PlotlyChart } from "@/components/plotly-chart";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { Restaurant } from "@/lib/types";
-import type { Layout, PlotMouseEvent, PlotSelectionEvent } from "plotly.js";
+import type { Layout, PlotMouseEvent, PlotSelectionEvent, Data as PlotData } from "plotly.js";
 
 type MapPoint = Pick<
   Restaurant,
@@ -23,21 +30,62 @@ type MapPoint = Pick<
   | "province"
 >;
 
+const LIMIT_OPTIONS = [1000, 3000, 5000, 10000];
+
 export function MapTab() {
   const filters = useAppStore((s) => s.filters);
   const selection = useAppStore((s) => s.selection);
   const setSelection = useAppStore((s) => s.setSelection);
   const clearSelection = useAppStore((s) => s.clearSelection);
+  const [limit, setLimit] = useState(3000);
 
   const { data, isLoading } = useSWR<{ points: MapPoint[] }>(
-    ["map", filters],
-    () => postQuery<{ points: MapPoint[] }>({ type: "map", filters }),
-    { revalidateOnFocus: false, keepPreviousData: true },
+    ["map", filters, limit],
+    () => postQuery<{ points: MapPoint[] }>({ type: "map", filters, limit }),
+    { revalidateOnFocus: false, keepPreviousData: true, dedupingInterval: 5000 },
   );
 
   const points = data?.points ?? [];
 
-  // spacebar-to-pan
+  // Pre-extract the parallel arrays Plotly wants. useMemo so we don't rebuild
+  // these on every keystroke or selection change.
+  const trace = useMemo<PlotData>(() => {
+    const lat: number[] = [];
+    const lon: number[] = [];
+    const text: string[] = [];
+    const customdata: (string | number)[][] = [];
+    const color: number[] = [];
+    for (const p of points) {
+      lat.push(p.latitude as number);
+      lon.push(p.longitude as number);
+      text.push(p.name);
+      customdata.push([
+        p.city ?? "",
+        p.rating ?? 0,
+        p.ratings ?? 0,
+        p.price_bucket ?? "",
+      ]);
+      color.push(p.rating ?? 0);
+    }
+    return {
+      type: "scattermapbox",
+      mode: "markers",
+      lat,
+      lon,
+      text,
+      customdata,
+      hovertemplate:
+        "<b>%{text}</b><br>%{customdata[0]}<br>Rating: %{customdata[1]} (%{customdata[2]} reviews)<br>%{customdata[3]}<extra></extra>",
+      marker: {
+        size: 5,
+        color,
+        colorscale: "Plasma",
+        opacity: 0.65,
+        showscale: true,
+      },
+    } as unknown as PlotData;
+  }, [points]);
+
   const plotDivRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     let prev: string | null = null;
@@ -83,49 +131,39 @@ export function MapTab() {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
           {isLoading
             ? "Loading map…"
             : `${points.length.toLocaleString()} points · ${selection.length} selected`}
-          {" · "}
-          <span className="hidden sm:inline">
-            Use the box-select or lasso tool in the toolbar (top right of the
-            map) to select restaurants. Hold space to pan.
+          <span className="hidden md:inline">
+            {" · "}box/lasso to select. Hold space to pan.
           </span>
         </p>
-        {selection.length > 0 && (
-          <Button variant="outline" size="sm" onClick={clearSelection}>
-            Clear selection
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">Points</span>
+          <Select value={String(limit)} onValueChange={(v) => v && setLimit(Number(v))}>
+            <SelectTrigger className="w-24 h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LIMIT_OPTIONS.map((n) => (
+                <SelectItem key={n} value={String(n)}>
+                  {n.toLocaleString()}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selection.length > 0 && (
+            <Button variant="outline" size="sm" onClick={clearSelection}>
+              Clear selection
+            </Button>
+          )}
+        </div>
       </div>
       <div ref={plotDivRef} className="rounded-lg overflow-hidden border border-border">
         <PlotlyChart
-          data={[
-            {
-              type: "scattermapbox",
-              mode: "markers",
-              lat: points.map((p) => p.latitude!),
-              lon: points.map((p) => p.longitude!),
-              text: points.map((p) => p.name),
-              customdata: points.map((p) => [
-                p.city ?? "",
-                p.rating ?? "",
-                p.ratings ?? "",
-                p.price_bucket ?? "",
-              ]),
-              hovertemplate:
-                "<b>%{text}</b><br>%{customdata[0]}<br>Rating: %{customdata[1]} (%{customdata[2]} reviews)<br>%{customdata[3]}<extra></extra>",
-              marker: {
-                size: 6,
-                color: points.map((p) => p.rating ?? 0),
-                colorscale: "Plasma",
-                opacity: 0.6,
-                showscale: true,
-              },
-            },
-          ]}
+          data={[trace]}
           layout={
             {
               mapbox: { style: "carto-darkmatter", zoom: 3, center: { lat: 39, lon: -98 } },
