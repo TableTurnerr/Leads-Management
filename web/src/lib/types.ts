@@ -28,16 +28,49 @@ export type Restaurant = {
   dataset: string;
 };
 
+// What policy to apply to rows whose `rating` column is null.
+//   "include" — keep them regardless of the score-range bounds
+//   "exclude" — drop them unless the score range is the full 0–5 default
+//   "only"    — keep only null-rated rows (useful for data-quality audits)
+export type RatingNullPolicy = "include" | "exclude" | "only";
+
+// Each top-level key on `enabled` corresponds to a filter group. When a key
+// is false the filter is "ignored" — its values are preserved in state so
+// the user can re-enable without re-entering, but no predicate is applied.
+export type FilterEnabled = {
+  provinces: boolean;
+  city: boolean;
+  categories: boolean;
+  excludeCategories: boolean;
+  score: boolean;
+  reviews: boolean;
+  priceBuckets: boolean;
+  isChain: boolean;
+  hasPhone: boolean;
+  hasWebsite: boolean;
+  hasAddress: boolean;
+  hasCoordinates: boolean;
+  search: boolean;
+};
+
 export type Filters = {
-  province: string | null;
+  provinces: string[];
   city: string | null;
   categories: string[];
+  excludeCategories: string[];
   scoreMin: number;
   scoreMax: number;
+  ratingNullPolicy: RatingNullPolicy;
   minReviews: number;
-  priceBucket: string | null;
+  maxReviews: number | null;
+  priceBuckets: string[];
   isChainOnly: boolean | null;
+  hasPhone: boolean | null;
+  hasWebsite: boolean | null;
+  hasAddress: boolean | null;
+  hasCoordinates: boolean | null;
   search: string;
+  enabled: FilterEnabled;
 };
 
 export type MapPointArrays = {
@@ -48,14 +81,38 @@ export type MapPointArrays = {
   count: number;
 };
 
+export const DEFAULT_ENABLED: FilterEnabled = {
+  provinces: true,
+  city: true,
+  categories: true,
+  excludeCategories: true,
+  score: true,
+  reviews: true,
+  priceBuckets: true,
+  isChain: true,
+  hasPhone: true,
+  hasWebsite: true,
+  hasAddress: true,
+  hasCoordinates: true,
+  search: true,
+};
+
 export const DEFAULT_FILTERS: Filters = {
-  province: null,
+  provinces: [],
   city: null,
   categories: [],
+  excludeCategories: [],
   scoreMin: 0,
   scoreMax: 5,
+  ratingNullPolicy: "include",
   minReviews: 0,
-  priceBucket: null,
-  isChainOnly: null,
+  maxReviews: null,
+  priceBuckets: [],
+  isChainOnly: false,
+  hasPhone: null,
+  hasWebsite: null,
+  hasAddress: null,
+  hasCoordinates: null,
   search: "",
+  enabled: DEFAULT_ENABLED,
 };
