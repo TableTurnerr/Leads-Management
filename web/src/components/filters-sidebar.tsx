@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { useAppStore } from "@/lib/store";
 import { Label } from "@/components/ui/label";
@@ -32,10 +33,30 @@ export function FiltersSidebar() {
   const setFilter = useAppStore((s) => s.setFilter);
   const resetFilters = useAppStore((s) => s.resetFilters);
 
-  const { data: facets } = useSWR<Facets>("/api/facets", swrFetcher);
+  // Local input state for search so we can debounce before broadcasting to
+  // the store (each store update kicks off every tab's SWR refetch).
+  const [searchInput, setSearchInput] = useState(filters.search);
+  useEffect(() => {
+    if (searchInput === filters.search) return;
+    const t = setTimeout(() => setFilter("search", searchInput), 300);
+    return () => clearTimeout(t);
+  }, [searchInput, filters.search, setFilter]);
+  // Sync the input back when filters are reset externally.
+  useEffect(() => {
+    if (filters.search !== searchInput) setSearchInput(filters.search);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.search]);
+
+  // Facets are immutable for the lifetime of the data, so dedupe forever.
+  const { data: facets } = useSWR<Facets>("/api/facets", swrFetcher, {
+    revalidateOnFocus: false,
+    revalidateIfStale: false,
+    dedupingInterval: 60_000,
+  });
   const { data: cityData } = useSWR<{ cities: string[] }>(
     filters.province ? `/api/facets?province=${encodeURIComponent(filters.province)}` : null,
     swrFetcher,
+    { revalidateOnFocus: false, dedupingInterval: 60_000 },
   );
 
   return (
@@ -52,8 +73,8 @@ export function FiltersSidebar() {
           <Label className="text-xs">Search by name</Label>
           <Input
             placeholder="e.g. McDonald's"
-            value={filters.search}
-            onChange={(e) => setFilter("search", e.target.value)}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
 
