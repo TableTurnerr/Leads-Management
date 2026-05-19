@@ -1,12 +1,5 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Filters } from "./types";
 
-/**
- * Apply a Filters object to a PostgREST query builder. Returns the same
- * builder so calls can be chained. The Supabase client doesn't expose its
- * query-builder type publicly enough to type strictly, so this stays
- * loosely typed.
- */
 export function applyFilters<T>(query: T, filters: Filters): T {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q = query as any;
@@ -24,12 +17,10 @@ export function applyFilters<T>(query: T, filters: Filters): T {
 
   if (filters.minReviews > 0) q = q.gte("ratings", filters.minReviews);
 
-  // rating filter: include null ratings (matches the Streamlit "~has_score" logic)
   if (filters.scoreMin > 0 || filters.scoreMax < 5) {
-    q = q
-      .or(
-        `rating.is.null,and(rating.gte.${filters.scoreMin},rating.lte.${filters.scoreMax})`,
-      );
+    q = q.or(
+      `rating.is.null,and(rating.gte.${filters.scoreMin},rating.lte.${filters.scoreMax})`,
+    );
   }
 
   if (filters.search.trim()) {
@@ -40,9 +31,19 @@ export function applyFilters<T>(query: T, filters: Filters): T {
   return q as T;
 }
 
-export function buildSupabaseClient(
-  supabase: SupabaseClient,
-  filters: Filters,
-) {
-  return applyFilters(supabase.from("restaurants").select("*"), filters);
+// Translate a Filters object to the named-arg shape the RPCs expect. Null
+// values are sent as null so the SQL's `is null or ...` short-circuits.
+export function filtersToRpcArgs(filters: Filters) {
+  const search = filters.search.trim();
+  return {
+    p_province:     filters.province,
+    p_city:         filters.city,
+    p_categories:   filters.categories.length ? filters.categories : null,
+    p_price_bucket: filters.priceBucket,
+    p_chain_only:   filters.isChainOnly,
+    p_min_reviews:  filters.minReviews,
+    p_score_min:    filters.scoreMin,
+    p_score_max:    filters.scoreMax,
+    p_search:       search ? search.replace(/[%_]/g, "\\$&") : null,
+  };
 }
