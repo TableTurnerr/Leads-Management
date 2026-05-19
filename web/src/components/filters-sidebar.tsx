@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { useAppStore } from "@/lib/store";
 import { Label } from "@/components/ui/label";
@@ -16,6 +16,8 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { DEFAULT_FILTERS } from "@/lib/types";
 import { X } from "lucide-react";
 
 const swrFetcher = (url: string) => fetch(url).then((r) => r.json());
@@ -49,6 +51,20 @@ export function FiltersSidebar() {
     resetFilters();
   }
 
+  const appliedCount = useMemo(() => {
+    let n = 0;
+    if (filters.search.trim()) n++;
+    if (filters.province) n++;
+    if (filters.city) n++;
+    if (filters.categories.length) n++;
+    if (filters.scoreMin !== DEFAULT_FILTERS.scoreMin) n++;
+    if (filters.scoreMax !== DEFAULT_FILTERS.scoreMax) n++;
+    if (filters.minReviews !== DEFAULT_FILTERS.minReviews) n++;
+    if (filters.priceBucket) n++;
+    if (filters.isChainOnly) n++;
+    return n;
+  }, [filters]);
+
   // Facets are immutable for the lifetime of the data, so dedupe forever.
   const { data: facets } = useSWR<Facets>("/api/facets", swrFetcher, {
     revalidateOnFocus: false,
@@ -63,14 +79,29 @@ export function FiltersSidebar() {
 
   return (
     <aside className="w-72 shrink-0 border-r border-border bg-card/40 flex flex-col">
-      <div className="p-4 border-b border-border flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wide">Filters</h2>
-        <Button variant="ghost" size="sm" onClick={handleReset} className="h-7 text-xs">
+      <div className="px-4 h-14 border-b border-border flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-foreground/80">
+            Filters
+          </h2>
+          {appliedCount > 0 && (
+            <Badge variant="secondary" className="h-5 px-1.5 text-[10px] tabular-nums">
+              {appliedCount}
+            </Badge>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleReset}
+          disabled={appliedCount === 0}
+          className="h-7 text-xs"
+        >
           Reset
         </Button>
       </div>
 
-      <div className="p-4 space-y-5 overflow-y-auto flex-1">
+      <div className="p-4 space-y-4 overflow-y-auto flex-1">
         <div className="grid gap-2">
           <Label className="text-xs">Search by name</Label>
           <Input
@@ -79,6 +110,8 @@ export function FiltersSidebar() {
             onChange={(e) => setSearchInput(e.target.value)}
           />
         </div>
+
+        <Separator className="my-1" />
 
         <div className="grid gap-2">
           <Label className="text-xs">State / Province</Label>
@@ -119,6 +152,8 @@ export function FiltersSidebar() {
             </SelectContent>
           </Select>
         </div>
+
+        <Separator className="my-1" />
 
         <div className="grid gap-2">
           <Label className="text-xs">Category</Label>
@@ -163,6 +198,8 @@ export function FiltersSidebar() {
           )}
         </div>
 
+        <Separator className="my-1" />
+
         <div className="grid gap-2">
           <div className="flex items-center justify-between">
             <Label className="text-xs">Score range</Label>
@@ -196,6 +233,8 @@ export function FiltersSidebar() {
           />
         </div>
 
+        <Separator className="my-1" />
+
         <div className="grid gap-2">
           <Label className="text-xs">Price range</Label>
           <Select
@@ -214,7 +253,7 @@ export function FiltersSidebar() {
           </Select>
         </div>
 
-        <div className="flex items-center gap-2 pt-2">
+        <div className="flex items-center gap-2 pt-1">
           <Checkbox
             id="chain-only"
             checked={filters.isChainOnly === true}
