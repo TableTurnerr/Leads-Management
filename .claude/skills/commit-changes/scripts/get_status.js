@@ -1,7 +1,7 @@
 const fs = require('fs');
 
 const components = [
-  { name: 'Root', path: 'package.json' },
+  { name: 'Web', path: 'web/package.json' },
 ];
 
 console.log('--- Component Version Status ---');
