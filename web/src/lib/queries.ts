@@ -234,7 +234,8 @@ export async function fetchFacets(supabase: SupabaseClient) {
     .select("cat_list")
     .limit(20000);
   const catCounts = new Map<string, number>();
-  for (const row of (catSample ?? []) as { cat_list: string[] }[]) {
+  const catRows = (catSample ?? []) as unknown as { cat_list: string[] }[];
+  for (const row of catRows) {
     for (const c of row.cat_list ?? []) {
       catCounts.set(c, (catCounts.get(c) ?? 0) + 1);
     }
@@ -283,7 +284,7 @@ export async function fetchColumnValues(
     filters,
   );
   const { data } = await q;
-  const rows = (data ?? []) as Record<string, unknown>[];
+  const rows = (data ?? []) as unknown as Record<string, unknown>[];
   const counts = new Map<string, number>();
   let nonNull = 0;
   for (const r of rows) {
