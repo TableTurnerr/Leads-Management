@@ -3,7 +3,14 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { SettingsForm } from "./settings-form";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { ArrowLeft, ArrowRight, Ban } from "lucide-react";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -17,6 +24,10 @@ export default async function SettingsPage() {
     .select("sheets_webhook_url")
     .eq("user_id", user.id)
     .maybeSingle();
+
+  const { count: chainCount } = await supabase
+    .from("fast_food_chains")
+    .select("*", { count: "exact", head: true });
 
   return (
     <main className="max-w-2xl mx-auto p-6 space-y-6">
@@ -36,6 +47,36 @@ export default async function SettingsPage() {
         initialUrl={settings?.sheets_webhook_url ?? ""}
         email={user.email ?? ""}
       />
+      <Card>
+        <CardHeader className="border-b pb-4">
+          <div className="flex items-center gap-2.5">
+            <span className="grid place-items-center h-8 w-8 rounded-md bg-muted text-foreground/80">
+              <Ban className="h-4 w-4" />
+            </span>
+            <div>
+              <CardTitle className="text-base">Fast-food chains</CardTitle>
+              <CardDescription>
+                {chainCount ?? 0} chain name{chainCount === 1 ? "" : "s"} excluded from
+                the leads view.
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-4 flex items-center justify-between gap-3">
+          <p className="text-sm text-muted-foreground">
+            Add or remove names. Matching leads are flagged automatically.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            nativeButton={false}
+            render={<Link href="/settings/chains" />}
+          >
+            Manage chains
+            <ArrowRight className="h-4 w-4 ml-1" />
+          </Button>
+        </CardContent>
+      </Card>
     </main>
   );
 }
