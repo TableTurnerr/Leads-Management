@@ -11,6 +11,7 @@ import type { MapPointArrays, Restaurant } from "@/lib/types";
 import type {
   Layout,
   PlotMouseEvent,
+  PlotRelayoutEvent,
   PlotSelectionEvent,
   Data as PlotData,
 } from "plotly.js";
@@ -27,6 +28,11 @@ export function MapTab() {
   const selectedIds = useAppStore((s) => s.selectedIds);
   const setSelectedIds = useAppStore((s) => s.setSelectedIds);
   const clearSelection = useAppStore((s) => s.clearSelection);
+  const setMapView = useAppStore((s) => s.setMapView);
+  // Snapshot the persisted view at mount. Lazy useState (not a subscription
+  // and not a ref) keeps the value stable for the lifetime of this component
+  // so the memoized layout below doesn't depend on a moving target.
+  const [initialMapView] = useState(() => useAppStore.getState().mapView);
 
   const { data, isLoading } = useSWR<MapPointArrays>(
     ["map", filters],
@@ -45,6 +51,49 @@ export function MapTab() {
       },
     [data],
   );
+
+  // Layout is built once. Mounting with the popover open / filter changes /
+  // SWR refetches would otherwise hand Plotly a "new" layout object with the
+  // default zoom & center every render, snapping the camera back. `uirevision`
+  // is the second line of defence: if anything does push a layout through,
+  // Plotly preserves the user's pan/zoom because the revision string didn't
+  // change.
+  const layout = useMemo<Partial<Layout>>(
+    () =>
+      ({
+        mapbox: {
+          style: "carto-darkmatter",
+          zoom: initialMapView.zoom,
+          center: initialMapView.center,
+        },
+        height: 600,
+        margin: { l: 0, r: 0, t: 0, b: 0 },
+        paper_bgcolor: "rgba(0,0,0,0)",
+        dragmode: "pan",
+        font: { color: "#cdd6f4" },
+        uirevision: "map-stable",
+      }) as Partial<Layout>,
+    [initialMapView],
+  );
+
+  function onRelayout(e?: Readonly<PlotRelayoutEvent>) {
+    if (!e) return;
+    // Plotly emits scattermapbox pan/zoom as dotted-path keys at the root
+    // of the event object: "mapbox.center" and "mapbox.zoom". Other keys
+    // (dragmode toggles, autosize) come through here too, so we only react
+    // when the camera actually moved.
+    const ev = e as unknown as Record<string, unknown>;
+    const center = ev["mapbox.center"] as
+      | { lat: number; lon: number }
+      | undefined;
+    const zoom = ev["mapbox.zoom"] as number | undefined;
+    if (center == null && zoom == null) return;
+    const current = useAppStore.getState().mapView;
+    setMapView({
+      zoom: zoom ?? current.zoom,
+      center: center ?? current.center,
+    });
+  }
 
   const trace = useMemo<PlotData>(() => {
     return {
@@ -180,20 +229,7 @@ export function MapTab() {
         >
           <PlotlyChart
             data={[trace]}
-            layout={
-              {
-                mapbox: {
-                  style: "carto-darkmatter",
-                  zoom: 3,
-                  center: { lat: 39, lon: -98 },
-                },
-                height: 600,
-                margin: { l: 0, r: 0, t: 0, b: 0 },
-                paper_bgcolor: "rgba(0,0,0,0)",
-                dragmode: "pan",
-                font: { color: "#cdd6f4" },
-              } as Partial<Layout>
-            }
+            layout={layout}
             useResizeHandler
             style={{ width: "100%", height: "600px" }}
             config={{
@@ -205,6 +241,7 @@ export function MapTab() {
             onSelected={onSelected}
             onDeselect={(() => clearSelection()) as () => void}
             onClick={onClick}
+            onRelayout={onRelayout}
           />
           {popover && (
             <div
