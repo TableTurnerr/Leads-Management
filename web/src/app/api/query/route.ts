@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { gzipSync } from "node:zlib";
 import { createClient } from "@/lib/supabase/server";
 import {
   fetchOverview,
@@ -10,6 +11,28 @@ import {
   fetchColumnValues,
 } from "@/lib/queries";
 import type { Filters } from "@/lib/types";
+
+// Next.js dev mode doesn't gzip its responses. The unfiltered map payload
+// is several megabytes of JSON over a Singapore round trip — compressing
+// it here cuts wire time roughly 5x.
+function jsonResponse(payload: unknown, acceptEncoding: string | null) {
+  const body = JSON.stringify(payload);
+  if (body.length > 4096 && acceptEncoding?.includes("gzip")) {
+    const gz = gzipSync(body);
+    return new Response(gz, {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "content-encoding": "gzip",
+        "content-length": String(gz.length),
+      },
+    });
+  }
+  return new Response(body, {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+}
 
 type Body =
   | { type: "overview"; filters: Filters }
@@ -30,39 +53,46 @@ type Body =
 export async function POST(request: Request) {
   const supabase = await createClient();
   const body = (await request.json()) as Body;
+  const acceptEncoding = request.headers.get("accept-encoding");
 
   try {
     switch (body.type) {
       case "overview":
-        return NextResponse.json(await fetchOverview(supabase, body.filters));
+        return jsonResponse(await fetchOverview(supabase, body.filters), acceptEncoding);
       case "map":
-        return NextResponse.json(
+        return jsonResponse(
           await fetchMapPointArrays(supabase, body.filters),
+          acceptEncoding,
         );
       case "by_ids":
-        return NextResponse.json({
-          rows: await fetchRestaurantsByIds(supabase, body.ids),
-        });
+        return jsonResponse(
+          { rows: await fetchRestaurantsByIds(supabase, body.ids) },
+          acceptEncoding,
+        );
       case "list":
-        return NextResponse.json(
+        return jsonResponse(
           await fetchList(supabase, body.filters, {
             sortCol: body.sortCol,
             asc: body.asc,
             page: body.page,
             pageSize: body.pageSize,
           }),
+          acceptEncoding,
         );
       case "category_stats":
-        return NextResponse.json({
-          rows: await fetchCategoryStats(supabase, body.topN, body.minCount),
-        });
+        return jsonResponse(
+          { rows: await fetchCategoryStats(supabase, body.topN, body.minCount) },
+          acceptEncoding,
+        );
       case "top_categories":
-        return NextResponse.json({
-          rows: await fetchTopCategories(supabase, body.filters, body.topN),
-        });
+        return jsonResponse(
+          { rows: await fetchTopCategories(supabase, body.filters, body.topN) },
+          acceptEncoding,
+        );
       case "column":
-        return NextResponse.json(
+        return jsonResponse(
           await fetchColumnValues(supabase, body.filters, body.col, body.topN),
+          acceptEncoding,
         );
       default:
         return NextResponse.json(
