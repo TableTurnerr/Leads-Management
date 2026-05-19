@@ -122,15 +122,20 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "tt-app-state-v1",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(safeStorage),
-      // v1 → v2: chain filter now defaults to excluding fast-food chains.
-      // Only nudge users who never set it; preserve explicit choices.
       migrate: (persisted, version) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const s = persisted as any;
         if (version < 2 && s?.filters && s.filters.isChainOnly == null) {
           s.filters.isChainOnly = false;
+        }
+        // v2 → v3: category values in cat_list were consolidated (1797 → 110
+        // distinct values). Clear any saved category filters so stale names
+        // (e.g. "Korean BBQ", "Pizza restaurant") don't silently return 0 rows.
+        if (version < 3 && s?.filters) {
+          s.filters.categories = [];
+          s.filters.excludeCategories = [];
         }
         return s;
       },
