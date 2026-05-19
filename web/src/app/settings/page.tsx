@@ -21,8 +21,13 @@ export default async function SettingsPage() {
   return (
     <main className="max-w-2xl mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-        <Button variant="ghost" size="sm" render={<Link href="/" />}>
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
+          <p className="text-sm text-muted-foreground">
+            Configure how Leads Management talks to your tools.
+          </p>
+        </div>
+        <Button variant="ghost" size="sm" nativeButton={false} render={<Link href="/" />}>
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back to explorer
         </Button>

@@ -50,14 +50,14 @@ export function SettingsForm({
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="border-b pb-4">
         <CardTitle>Apps Script webhook</CardTitle>
         <CardDescription>
           The Send-to-Sheets button POSTs the current selection to this URL as
-          JSON. Signed in as {email}.
+          JSON. Signed in as <span className="font-medium text-foreground/80">{email}</span>.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="pt-4">
         <form className="grid gap-4" onSubmit={onSave}>
           <div className="grid gap-2">
             <Label htmlFor="webhook">Webhook URL</Label>
@@ -68,12 +68,12 @@ export function SettingsForm({
               value={url}
               onChange={(e) => setUrl(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground leading-relaxed">
               Deploy your Apps Script as a Web App with access set to
               &ldquo;Anyone&rdquo; (or &ldquo;Anyone with the link&rdquo;) and
               paste the URL here. See{" "}
-              <code className="text-xs">apps-script/send-to-sheets.gs</code> in
-              the repo for the script.
+              <code className="rounded bg-muted px-1 py-0.5 text-[0.7rem]">apps-script/send-to-sheets.gs</code>{" "}
+              in the repo for the script.
             </p>
           </div>
           <Button type="submit" disabled={saving} className="w-fit">
