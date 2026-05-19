@@ -41,11 +41,13 @@ export function FiltersSidebar() {
     const t = setTimeout(() => setFilter("search", searchInput), 300);
     return () => clearTimeout(t);
   }, [searchInput, filters.search, setFilter]);
-  // Sync the input back when filters are reset externally.
-  useEffect(() => {
-    if (filters.search !== searchInput) setSearchInput(filters.search);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.search]);
+
+  // Reset clears both the store and the input together so we never have to
+  // sync the input from inside an effect.
+  function handleReset() {
+    setSearchInput("");
+    resetFilters();
+  }
 
   // Facets are immutable for the lifetime of the data, so dedupe forever.
   const { data: facets } = useSWR<Facets>("/api/facets", swrFetcher, {
@@ -63,7 +65,7 @@ export function FiltersSidebar() {
     <aside className="w-72 shrink-0 border-r border-border bg-card/40 flex flex-col">
       <div className="p-4 border-b border-border flex items-center justify-between">
         <h2 className="text-sm font-semibold uppercase tracking-wide">Filters</h2>
-        <Button variant="ghost" size="sm" onClick={resetFilters} className="h-7 text-xs">
+        <Button variant="ghost" size="sm" onClick={handleReset} className="h-7 text-xs">
           Reset
         </Button>
       </div>

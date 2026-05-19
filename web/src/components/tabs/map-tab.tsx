@@ -45,7 +45,7 @@ export function MapTab() {
     { revalidateOnFocus: false, keepPreviousData: true, dedupingInterval: 5000 },
   );
 
-  const points = data?.points ?? [];
+  const points = useMemo(() => data?.points ?? [], [data]);
 
   // Pre-extract the parallel arrays Plotly wants. useMemo so we don't rebuild
   // these on every keystroke or selection change.
