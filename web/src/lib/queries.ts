@@ -1,13 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { applyFilters, filtersToRpcArgs } from "./filters";
-import type { Filters, Restaurant } from "./types";
+import type { Filters, MapPointArrays, Restaurant } from "./types";
 
 const LIST_COLS =
   "id,name,address,city,province,postal_code,country,latitude,longitude," +
   "website,phone,category,categories,cat_list,rating,ratings,price_range," +
   "price_bucket,position,link,is_chain,dataset,location_name";
-
-const MAP_COLS = "id,name,city,province,latitude,longitude,rating,ratings,price_bucket";
 
 export type OverviewStats = {
   total: number;
@@ -46,25 +44,68 @@ export async function fetchOverview(
   }) as OverviewStats;
 }
 
-// Map: server-side LIMIT, slim columns. Default 3000 is enough to read at a
-// glance; the map tab exposes a "More points" control if the user wants more.
-export async function fetchMapPoints(
+// Map: direct PostgREST query over the partial covering index
+// (idx_restaurants_map_cover). The index-only scan returns every matching
+// row in ~1.5s on the unfiltered ~144k case, vs ~6s if we ask Postgres to
+// jsonb_agg the same data. We transform rows → columnar arrays in Node so
+// Plotly can pass the arrays straight to a single scattermapbox trace.
+const MAP_COLS = "id,name,latitude,longitude,rating,ratings";
+
+type MapRow = {
+  id: number;
+  name: string;
+  latitude: number;
+  longitude: number;
+  rating: number | null;
+  ratings: number | null;
+};
+
+export async function fetchMapPointArrays(
   supabase: SupabaseClient,
   filters: Filters,
-  limit = 3000,
-) {
+): Promise<MapPointArrays> {
   const q = applyFilters(
     supabase
       .from("restaurants")
       .select(MAP_COLS)
       .not("latitude", "is", null)
       .not("longitude", "is", null)
-      .limit(limit),
+      .limit(200000),
     filters,
   );
   const { data, error } = await q;
   if (error) throw error;
-  return data ?? [];
+
+  const rows = (data ?? []) as unknown as MapRow[];
+  const n = rows.length;
+  const id = new Array<number>(n);
+  const name = new Array<string>(n);
+  const lat = new Array<number>(n);
+  const lon = new Array<number>(n);
+  const rating = new Array<number | null>(n);
+  const ratings = new Array<number | null>(n);
+  for (let i = 0; i < n; i++) {
+    const r = rows[i];
+    id[i] = r.id;
+    name[i] = r.name;
+    lat[i] = r.latitude;
+    lon[i] = r.longitude;
+    rating[i] = r.rating;
+    ratings[i] = r.ratings;
+  }
+  return { id, name, lat, lon, rating, ratings, count: n };
+}
+
+export async function fetchRestaurantsByIds(
+  supabase: SupabaseClient,
+  ids: number[],
+): Promise<Restaurant[]> {
+  if (ids.length === 0) return [];
+  const { data, error } = await supabase.rpc("restaurants_by_ids", {
+    p_ids: ids,
+  });
+  if (error) throw error;
+  return (data ?? []) as Restaurant[];
 }
 
 export async function fetchList(

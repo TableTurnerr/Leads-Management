@@ -40,6 +40,16 @@ export type Filters = {
   search: string;
 };
 
+export type MapPointArrays = {
+  id: number[];
+  name: string[];
+  lat: number[];
+  lon: number[];
+  rating: (number | null)[];
+  ratings: (number | null)[];
+  count: number;
+};
+
 export const DEFAULT_FILTERS: Filters = {
   province: null,
   city: null,

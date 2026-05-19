@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import {
   fetchOverview,
-  fetchMapPoints,
+  fetchMapPointArrays,
+  fetchRestaurantsByIds,
   fetchList,
   fetchCategoryStats,
   fetchTopCategories,
@@ -12,7 +13,8 @@ import type { Filters } from "@/lib/types";
 
 type Body =
   | { type: "overview"; filters: Filters }
-  | { type: "map"; filters: Filters; limit?: number }
+  | { type: "map"; filters: Filters }
+  | { type: "by_ids"; ids: number[] }
   | {
       type: "list";
       filters: Filters;
@@ -34,8 +36,12 @@ export async function POST(request: Request) {
       case "overview":
         return NextResponse.json(await fetchOverview(supabase, body.filters));
       case "map":
+        return NextResponse.json(
+          await fetchMapPointArrays(supabase, body.filters),
+        );
+      case "by_ids":
         return NextResponse.json({
-          points: await fetchMapPoints(supabase, body.filters, body.limit),
+          rows: await fetchRestaurantsByIds(supabase, body.ids),
         });
       case "list":
         return NextResponse.json(

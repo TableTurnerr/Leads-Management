@@ -1,15 +1,15 @@
 "use client";
 
 import { create } from "zustand";
-import { DEFAULT_FILTERS, type Filters, type Restaurant } from "./types";
+import { DEFAULT_FILTERS, type Filters } from "./types";
 
 type AppState = {
   filters: Filters;
   setFilter: <K extends keyof Filters>(key: K, value: Filters[K]) => void;
   resetFilters: () => void;
 
-  selection: Restaurant[];
-  setSelection: (rows: Restaurant[]) => void;
+  selectedIds: number[];
+  setSelectedIds: (ids: number[]) => void;
   clearSelection: () => void;
 };
 
@@ -19,7 +19,7 @@ export const useAppStore = create<AppState>((set) => ({
     set((s) => ({ filters: { ...s.filters, [key]: value } })),
   resetFilters: () => set({ filters: DEFAULT_FILTERS }),
 
-  selection: [],
-  setSelection: (rows) => set({ selection: rows }),
-  clearSelection: () => set({ selection: [] }),
+  selectedIds: [],
+  setSelectedIds: (ids) => set({ selectedIds: ids }),
+  clearSelection: () => set({ selectedIds: [] }),
 }));
