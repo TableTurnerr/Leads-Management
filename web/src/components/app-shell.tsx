@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, Suspense, lazy } from "react";
+import { Suspense, lazy } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FiltersSidebar } from "./filters-sidebar";
 import { TopBar } from "./top-bar";
-import { useAppStore } from "@/lib/store";
+import { useAppStore, type TabKey } from "@/lib/store";
 
 // Each tab is its own chunk. We render only the active one so Plotly,
 // SWR fetches, and Plotly-bound React state for the other five tabs stay
@@ -18,11 +18,30 @@ const ColumnExplorerTab = lazy(() => import("./tabs/column-explorer-tab").then(m
 const DataTableTab      = lazy(() => import("./tabs/data-table-tab").then(m => ({ default: m.DataTableTab })));
 const SelectedTab       = lazy(() => import("./tabs/selected-tab").then(m => ({ default: m.SelectedTab })));
 
-type TabKey = "overview" | "map" | "categories" | "column" | "table" | "selected";
-
 export function AppShell({ userEmail }: { userEmail: string }) {
   const selectionCount = useAppStore((s) => s.selectedIds.length);
-  const [tab, setTab] = useState<TabKey>("overview");
+  const tab = useAppStore((s) => s.activeTab);
+  const setTab = useAppStore((s) => s.setActiveTab);
+  const hasHydrated = useAppStore((s) => s.hasHydrated);
+
+  // The store starts with defaults on every page load; persist replaces them
+  // asynchronously after reading localStorage. Rendering the interactive
+  // shell before that lands would flash the default tab/filters, and the
+  // filters sidebar (which seeds a local draft from `applied` at mount) would
+  // latch onto the defaults. Render a quiet shell until hydration finishes.
+  if (!hasHydrated) {
+    return (
+      <div className="flex min-h-screen">
+        <aside className="w-80 shrink-0 border-r border-border bg-card/40" />
+        <div className="flex-1 flex flex-col min-w-0">
+          <TopBar userEmail={userEmail} />
+          <main className="flex-1 p-6 overflow-x-hidden">
+            <TabLoading />
+          </main>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen">

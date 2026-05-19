@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import useSWR from "swr";
 import { useAppStore } from "@/lib/store";
 import { postQuery } from "@/lib/fetcher";
@@ -20,7 +19,8 @@ const BASE_LAYOUT: Partial<Layout> = {
 
 export function CategoriesTab() {
   const filters = useAppStore((s) => s.filters);
-  const [topN, setTopN] = useState(25);
+  const topN = useAppStore((s) => s.categoriesTopN);
+  const setTopN = useAppStore((s) => s.setCategoriesTopN);
 
   const { data: top, isLoading: topLoading } = useSWR<{
     rows: { category: string; count: number }[];

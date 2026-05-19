@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import useSWR from "swr";
 import { useAppStore } from "@/lib/store";
 import { postQuery } from "@/lib/fetcher";
@@ -41,8 +40,10 @@ type ColumnData = {
 
 export function ColumnExplorerTab() {
   const filters = useAppStore((s) => s.filters);
-  const [col, setCol] = useState("category");
-  const [topN, setTopN] = useState(20);
+  const col = useAppStore((s) => s.columnExplorerCol);
+  const topN = useAppStore((s) => s.columnExplorerTopN);
+  const setCol = useAppStore((s) => s.setColumnExplorerCol);
+  const setTopN = useAppStore((s) => s.setColumnExplorerTopN);
 
   const { data, isLoading } = useSWR<ColumnData>(
     ["column", filters, col, topN],
