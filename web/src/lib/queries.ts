@@ -44,56 +44,31 @@ export async function fetchOverview(
   }) as OverviewStats;
 }
 
-// Map: direct PostgREST query over the partial covering index
-// (idx_restaurants_map_cover). The index-only scan returns every matching
-// row in ~1.5s on the unfiltered ~144k case, vs ~6s if we ask Postgres to
-// jsonb_agg the same data. We transform rows → columnar arrays in Node so
-// Plotly can pass the arrays straight to a single scattermapbox trace.
-const MAP_COLS = "id,name,latitude,longitude,rating,ratings";
-
-type MapRow = {
-  id: number;
-  name: string;
-  latitude: number;
-  longitude: number;
-  rating: number | null;
-  ratings: number | null;
-};
-
+// Map: a single RPC that returns six parallel arrays for every point
+// matching the active filters. The unfiltered case (the common path) is
+// served from a cached row in public.map_cache, refreshed by the ingest
+// script — sub-50ms server side. Filtered queries fall through to live
+// compute. The RPC route is required: PostgREST's db-max-rows caps direct
+// table queries at 1000 rows on this project, and a single jsonb return
+// value sidesteps that.
 export async function fetchMapPointArrays(
   supabase: SupabaseClient,
   filters: Filters,
 ): Promise<MapPointArrays> {
-  const q = applyFilters(
-    supabase
-      .from("restaurants")
-      .select(MAP_COLS)
-      .not("latitude", "is", null)
-      .not("longitude", "is", null)
-      .limit(200000),
-    filters,
+  const { data, error } = await supabase.rpc(
+    "restaurants_map_points",
+    filtersToRpcArgs(filters),
   );
-  const { data, error } = await q;
   if (error) throw error;
-
-  const rows = (data ?? []) as unknown as MapRow[];
-  const n = rows.length;
-  const id = new Array<number>(n);
-  const name = new Array<string>(n);
-  const lat = new Array<number>(n);
-  const lon = new Array<number>(n);
-  const rating = new Array<number | null>(n);
-  const ratings = new Array<number | null>(n);
-  for (let i = 0; i < n; i++) {
-    const r = rows[i];
-    id[i] = r.id;
-    name[i] = r.name;
-    lat[i] = r.latitude;
-    lon[i] = r.longitude;
-    rating[i] = r.rating;
-    ratings[i] = r.ratings;
-  }
-  return { id, name, lat, lon, rating, ratings, count: n };
+  return (data ?? {
+    id: [],
+    name: [],
+    lat: [],
+    lon: [],
+    rating: [],
+    ratings: [],
+    count: 0,
+  }) as MapPointArrays;
 }
 
 export async function fetchRestaurantsByIds(

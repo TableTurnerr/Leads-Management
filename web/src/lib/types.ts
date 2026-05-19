@@ -42,11 +42,9 @@ export type Filters = {
 
 export type MapPointArrays = {
   id: number[];
-  name: string[];
   lat: number[];
   lon: number[];
   rating: (number | null)[];
-  ratings: (number | null)[];
   count: number;
 };
 

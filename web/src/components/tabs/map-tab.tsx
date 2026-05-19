@@ -38,11 +38,9 @@ export function MapTab() {
     () =>
       data ?? {
         id: [],
-        name: [],
         lat: [],
         lon: [],
         rating: [],
-        ratings: [],
         count: 0,
       },
     [data],
@@ -54,10 +52,8 @@ export function MapTab() {
       mode: "markers",
       lat: points.lat,
       lon: points.lon,
-      text: points.name,
       customdata: points.id,
-      hovertemplate:
-        "<b>%{text}</b><br>Rating: %{marker.color}<extra></extra>",
+      hovertemplate: "Rating: %{marker.color}<br>Click for details<extra></extra>",
       marker: {
         size: 5,
         color: points.rating.map((r) => (r == null ? 0 : r)),
