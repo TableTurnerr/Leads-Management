@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import useSWR from "swr";
 import { useAppStore, type TableSortCol } from "@/lib/store";
 import { postQuery } from "@/lib/fetcher";
+import { useApprovalFlags } from "@/lib/use-approval-flags";
 import {
   Select,
   SelectContent,
@@ -39,6 +40,15 @@ import {
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Download, Eye, FileSpreadsheet } from "lucide-react";
 import type { Restaurant } from "@/lib/types";
+import { APPROVAL_STATUS_LABELS } from "@/lib/types";
+import { Badge } from "@/components/ui/badge";
+import {
+  getApprovalStatuses,
+  approvalStatusToneClass,
+  rowMatchesApprovalStatuses,
+  type ApprovalStatusFlags,
+} from "@/lib/approval-status";
+import { cn } from "@/lib/utils";
 import { logLeadAction } from "@/lib/log-action";
 
 const PAGE_SIZE = 200;
@@ -63,6 +73,17 @@ export function DataTableTab() {
   const setSortCol = useAppStore((s) => s.setTableSortCol);
   const setAsc = useAppStore((s) => s.setTableAsc);
   const setPage = useAppStore((s) => s.setTablePage);
+  const approvalStatuses = useAppStore((s) => s.filters.approvalStatuses);
+  const approvalStatusesEnabled = useAppStore((s) => s.filters.enabled.approvalStatuses);
+  const approvedIds = useAppStore((s) => s.approvedIds);
+  const rejectedIds = useAppStore((s) => s.rejectedIds);
+  const skippedIds = useAppStore((s) => s.skippedIds);
+  const downloadedIds = useAppStore((s) => s.downloadedIds);
+  const sentToSheetsIds = useAppStore((s) => s.sentToSheetsIds);
+  const flags: ApprovalStatusFlags = useMemo(
+    () => ({ approvedIds, rejectedIds, skippedIds, downloadedIds, sentToSheetsIds }),
+    [approvedIds, rejectedIds, skippedIds, downloadedIds, sentToSheetsIds],
+  );
 
   const { data, isLoading } = useSWR<{ rows: Restaurant[]; total: number }>(
     ["list", filters, sortCol, asc, page],
@@ -80,7 +101,14 @@ export function DataTableTab() {
 
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const rows = useMemo(() => data?.rows ?? [], [data]);
+  const allRows = useMemo(() => data?.rows ?? [], [data]);
+  // Lead-status filter is client-only (state lives in the browser), so it
+  // narrows the visible page after the server query. Page totals still
+  // reflect the unfiltered server result.
+  const rows = useMemo(() => {
+    if (!approvalStatusesEnabled || approvalStatuses.length === 0) return allRows;
+    return allRows.filter((r) => rowMatchesApprovalStatuses(r.id, approvalStatuses, flags));
+  }, [allRows, approvalStatuses, approvalStatusesEnabled, flags]);
   const initialLoading = isLoading && !data;
 
   if (initialLoading) {
@@ -121,6 +149,7 @@ export function DataTableTab() {
         <Table>
           <TableHeader className="sticky top-0 bg-card z-10">
             <TableRow>
+              <TableHead>Status</TableHead>
               {SHOW_COLS.map((c) => (
                 <TableHead key={c.key}>{c.label}</TableHead>
               ))}
@@ -129,6 +158,9 @@ export function DataTableTab() {
           <TableBody>
             {rows.map((r) => (
               <TableRow key={r.id}>
+                <TableCell>
+                  <ApprovalStatusBadges id={r.id} flags={flags} />
+                </TableCell>
                 {SHOW_COLS.map((c) => {
                   const v = r[c.key as keyof Restaurant];
                   if (c.key === "website" && v) {
@@ -155,7 +187,7 @@ export function DataTableTab() {
             ))}
             {!rows.length && !isLoading && (
               <TableRow>
-                <TableCell colSpan={SHOW_COLS.length} className="text-center text-muted-foreground py-6">
+                <TableCell colSpan={SHOW_COLS.length + 1} className="text-center text-muted-foreground py-6">
                   No matches.
                 </TableCell>
               </TableRow>
@@ -207,6 +239,8 @@ function ExportMenu({
   total: number;
 }) {
   const filters = useAppStore((s) => s.filters);
+  const markDownloaded = useAppStore((s) => s.markDownloaded);
+  const approvalFlags = useApprovalFlags();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewSize, setPreviewSize] = useState(200);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -228,6 +262,7 @@ function ExportMenu({
       .join("\n");
     const blob = new Blob([`${header}\n${body}`], { type: "text/csv" });
     triggerDownload(blob, "restaurants_page.csv");
+    markDownloaded(rows.map((r) => r.id));
     void logLeadAction({
       action: "csv_download",
       source: "table_visible_page",
@@ -246,7 +281,7 @@ function ExportMenu({
       const res = await fetch("/api/export-csv", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ filters, mode: "preview", previewSize }),
+        body: JSON.stringify({ filters, mode: "preview", previewSize, approvalFlags }),
       });
       if (!res.ok) throw new Error(`Preview failed (${res.status})`);
       const text = await res.text();
@@ -266,7 +301,7 @@ function ExportMenu({
       const res = await fetch("/api/export-csv", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ filters, mode: "full" }),
+        body: JSON.stringify({ filters, mode: "full", approvalFlags }),
       });
       if (!res.ok) throw new Error(`Export failed (${res.status})`);
       // Browsers buffer the full response into a Blob; for 100k rows this
@@ -278,6 +313,11 @@ function ExportMenu({
           .get("content-disposition")
           ?.match(/filename="?([^"]+)"?/)?.[1] ?? "restaurants.csv";
       triggerDownload(blob, name);
+      // The export RPC writes `id` as the first column, so we can recover
+      // every downloaded row's ID without a second round trip.
+      const csvText = await blob.text();
+      const ids = extractIdsFromCsv(csvText);
+      if (ids.length) markDownloaded(ids);
       toast.success("Download started.");
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Export failed";
@@ -291,6 +331,8 @@ function ExportMenu({
     if (!previewText) return;
     const blob = new Blob([previewText], { type: "text/csv" });
     triggerDownload(blob, `restaurants_preview_${previewSize}.csv`);
+    const ids = extractIdsFromCsv(previewText);
+    if (ids.length) markDownloaded(ids);
   }
 
   return (
@@ -516,6 +558,46 @@ function parseCsvHead(text: string, maxRows: number) {
     else rows.push(cur);
   }
   return { headers, rows };
+}
+
+function ApprovalStatusBadges({
+  id,
+  flags,
+}: {
+  id: number;
+  flags: ApprovalStatusFlags;
+}) {
+  const statuses = getApprovalStatuses(id, flags);
+  return (
+    <div className="flex flex-wrap gap-1">
+      {statuses.map((s) => (
+        <Badge
+          key={s}
+          className={cn(
+            "text-[10px] px-1.5 py-0.5 font-medium",
+            approvalStatusToneClass(s),
+          )}
+        >
+          {APPROVAL_STATUS_LABELS[s]}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+// Pulls the leading integer off every non-header line of the CSV. The export
+// route always emits `id` as the first column and IDs never need quoting,
+// so a per-line regex is enough and avoids parsing the rest of the row.
+function extractIdsFromCsv(text: string): number[] {
+  const out: number[] = [];
+  const lines = text.split(/\r?\n/);
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i];
+    if (!line) continue;
+    const m = /^(\d+),/.exec(line);
+    if (m) out.push(Number(m[1]));
+  }
+  return out;
 }
 
 function triggerDownload(blob: Blob, filename: string) {
