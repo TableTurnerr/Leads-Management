@@ -16,21 +16,35 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import {
+  ALL_APPROVAL_STATUSES,
   DEFAULT_FILTERS,
+  APPROVAL_STATUS_LABELS,
   type FilterEnabled,
   type Filters,
+  type ApprovalStatus,
   type RatingNullPolicy,
 } from "@/lib/types";
 import {
   ChevronDown,
   ChevronRight,
-  Eye,
-  EyeOff,
   X,
   Settings2,
+  ListPlus,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { isDefaultApprovalStatuses } from "@/lib/approval-status";
 import { SavedFiltersMenu } from "@/components/saved-filters-menu";
+import { postQuery } from "@/lib/fetcher";
+import { useApprovalFlags } from "@/lib/use-approval-flags";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 const swrFetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -53,7 +67,8 @@ type SectionKey =
   | "reviews"
   | "price"
   | "data"
-  | "chain";
+  | "chain"
+  | "approvalStatus";
 
 const MAX_OPEN_SECTIONS = 2;
 const DEFAULT_OPEN_ORDER: SectionKey[] = ["search", "location"];
@@ -66,6 +81,40 @@ export function FiltersSidebar() {
   const setStoreFilters = useAppStore((s) => s.setFilter);
   const setStoreEnabled = useAppStore((s) => s.setEnabled);
   const resetStoreFilters = useAppStore((s) => s.resetFilters);
+  const selectedIds = useAppStore((s) => s.selectedIds);
+  const setSelectedIds = useAppStore((s) => s.setSelectedIds);
+  const approvalFlags = useApprovalFlags();
+
+  const [addAllLoading, setAddAllLoading] = useState(false);
+  const [confirmIds, setConfirmIds] = useState<number[] | null>(null);
+
+  function mergeIntoSelection(ids: number[]) {
+    if (!ids.length) return;
+    const merged = Array.from(new Set([...selectedIds, ...ids]));
+    setSelectedIds(merged);
+  }
+
+  async function handleAddAllToSelection() {
+    if (addAllLoading) return;
+    setAddAllLoading(true);
+    try {
+      const res = await postQuery<{ id: number[]; count: number }>({
+        type: "map",
+        filters: applied,
+        approvalFlags,
+      });
+      const ids = (res.id ?? []).filter((x) => typeof x === "number");
+      if (ids.length > 100) {
+        setConfirmIds(ids);
+      } else {
+        mergeIntoSelection(ids);
+      }
+    } catch {
+      // Surface nothing fancy; the button just re-enables.
+    } finally {
+      setAddAllLoading(false);
+    }
+  }
 
   const [filters, setDraft] = useState<Filters>(applied);
   const setFilter = <K extends keyof Filters>(key: K, value: Filters[K]) =>
@@ -184,14 +233,6 @@ export function FiltersSidebar() {
           )}
         </div>
         <div className="flex items-center gap-1">
-          <SavedFiltersMenu
-            currentFilters={filters}
-            onLoad={handleLoadSaved}
-          />
-          <ConditionsManager
-            enabled={filters.enabled}
-            setEnabled={setEnabled}
-          />
           <Button
             variant="ghost"
             size="sm"
@@ -338,7 +379,7 @@ export function FiltersSidebar() {
               <div className="flex items-center justify-between">
                 <Label className="text-xs">Range</Label>
                 <span className="text-xs text-muted-foreground tabular-nums">
-                  {filters.scoreMin.toFixed(1)} – {filters.scoreMax.toFixed(1)}
+                  {filters.scoreMin.toFixed(1)} — {filters.scoreMax.toFixed(1)}
                 </span>
               </div>
               <Slider
@@ -498,12 +539,30 @@ export function FiltersSidebar() {
         </Section>
 
         <Section
+          title="Approval status"
+          isOpen={isOpen("approvalStatus")}
+          onToggle={() => toggleSection("approvalStatus")}
+          enabled={filters.enabled.approvalStatuses}
+          onEnabledChange={(v) => setEnabled("approvalStatuses", v)}
+          active={
+            filters.approvalStatuses.length > 0 &&
+            !isDefaultApprovalStatuses(filters.approvalStatuses)
+          }
+        >
+          <ApprovalStatusPicker
+            selected={filters.approvalStatuses}
+            onChange={(next) => setFilter("approvalStatuses", next)}
+            disabled={!filters.enabled.approvalStatuses}
+          />
+        </Section>
+
+        <Section
           title="Chain"
           isOpen={isOpen("chain")}
           onToggle={() => toggleSection("chain")}
           enabled={filters.enabled.isChain}
           onEnabledChange={(v) => setEnabled("isChain", v)}
-          active={filters.isChainOnly != null}
+          active={filters.isChainOnly !== false}
           last
         >
           <TriState
@@ -517,42 +576,109 @@ export function FiltersSidebar() {
 
       {/* Apply / Discard footer. Stays visible so the user can always see
           whether the panel matches what's actually being queried. */}
-      <div className="border-t border-border bg-card/60 backdrop-blur px-3 py-2.5 flex items-center gap-2 sticky bottom-0">
-        <div className="flex-1 text-[11px] leading-tight">
-          {dirty ? (
-            <span className="text-foreground/90">
-              {draftCount === appliedCount
-                ? "Changes pending"
-                : `${draftCount} pending · ${appliedCount} applied`}
-            </span>
-          ) : (
-            <span className="text-muted-foreground">
-              Up to date · {appliedCount} applied
-            </span>
+      <div className="border-t border-border bg-card/60 backdrop-blur sticky bottom-0">
+        <div className="px-3 py-2.5 flex items-center gap-2 border-b border-border/50">
+          <div className="flex-1 text-[11px] leading-tight">
+            {dirty ? (
+              <span className="text-foreground/90">
+                {draftCount === appliedCount
+                  ? "Changes pending"
+                  : `${draftCount} pending · ${appliedCount} applied`}
+              </span>
+            ) : (
+              <span className="text-muted-foreground">
+                Up to date · {appliedCount} applied
+              </span>
+            )}
+          </div>
+          {dirty && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleDiscard}
+              className="h-7 text-xs"
+            >
+              Discard
+            </Button>
           )}
+          <Button
+            size="sm"
+            onClick={handleApply}
+            disabled={!dirty}
+            className="h-7 text-xs gap-1"
+          >
+            Apply
+            {dirty && (
+              <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground/80" />
+            )}
+          </Button>
         </div>
-        {dirty && (
+        <div className="px-3 py-2 flex flex-col gap-1.5">
+          <div className="flex items-center gap-1">
+            <SavedFiltersMenu
+              currentFilters={filters}
+              onLoad={handleLoadSaved}
+            />
+            <ConditionsManager
+              enabled={filters.enabled}
+              setEnabled={setEnabled}
+            />
+          </div>
           <Button
             variant="ghost"
             size="sm"
-            onClick={handleDiscard}
-            className="h-7 text-xs"
+            onClick={handleAddAllToSelection}
+            disabled={addAllLoading || dirty}
+            title={
+              dirty
+                ? "Apply filters first"
+                : "Add every lead matching the applied filters to the current selection"
+            }
+            className="h-7 w-full text-xs gap-1 justify-center"
           >
-            Discard
+            {addAllLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ListPlus className="h-3.5 w-3.5" />
+            )}
+            Add all to selection
           </Button>
-        )}
-        <Button
-          size="sm"
-          onClick={handleApply}
-          disabled={!dirty}
-          className="h-7 text-xs gap-1"
-        >
-          Apply
-          {dirty && (
-            <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground/80" />
-          )}
-        </Button>
+        </div>
       </div>
+
+      <Dialog
+        open={confirmIds != null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmIds(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add {confirmIds?.length ?? 0} leads to selection?</DialogTitle>
+            <DialogDescription>
+              This will merge {confirmIds?.length ?? 0} leads matching the applied
+              filters into your current selection
+              {selectedIds.length > 0 ? ` of ${selectedIds.length}` : ""}.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setConfirmIds(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (confirmIds) mergeIntoSelection(confirmIds);
+                setConfirmIds(null);
+              }}
+            >
+              Add {confirmIds?.length ?? 0} leads
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }
@@ -583,7 +709,7 @@ function Section({
       <div className="flex items-center px-4 h-9">
         <button
           onClick={onToggle}
-          className="flex-1 flex items-center gap-1.5 text-left group"
+          className="flex-1 flex cursor-pointer items-center gap-1.5 text-left group"
         >
           {isOpen ? (
             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
@@ -600,25 +726,6 @@ function Section({
           </span>
           {active && enabled && (
             <span className="ml-1 h-1.5 w-1.5 rounded-full bg-primary" />
-          )}
-        </button>
-        <button
-          onClick={() => onEnabledChange(!enabled)}
-          aria-label={enabled ? `Ignore ${title}` : `Enable ${title}`}
-          title={
-            enabled
-              ? `Click to ignore ${title.toLowerCase()} (keeps values)`
-              : `Click to apply ${title.toLowerCase()}`
-          }
-          className={cn(
-            "h-6 w-6 grid place-content-center rounded-md text-muted-foreground hover:text-foreground transition-colors",
-            !enabled && "text-muted-foreground/50",
-          )}
-        >
-          {enabled ? (
-            <Eye className="h-3.5 w-3.5" />
-          ) : (
-            <EyeOff className="h-3.5 w-3.5" />
           )}
         </button>
       </div>
@@ -700,7 +807,7 @@ function NullPolicyToggle({
           disabled={disabled}
           title={o.hint}
           className={cn(
-            "flex-1 px-2 py-1 text-[11px] transition-colors",
+            "flex-1 cursor-pointer px-2 py-1 text-[11px] transition-colors",
             "disabled:opacity-50 disabled:cursor-not-allowed",
             value === o.v
               ? "bg-primary text-primary-foreground"
@@ -761,7 +868,7 @@ function CheckboxList({
               onClick={() => onToggle(v)}
               disabled={disabled}
               className={cn(
-                "w-full flex items-center gap-2 px-2 py-1 text-xs text-left hover:bg-card/60 transition-colors",
+                "w-full flex cursor-pointer items-center gap-2 px-2 py-1 text-xs text-left hover:bg-card/60 transition-colors",
                 "disabled:cursor-not-allowed",
               )}
             >
@@ -861,11 +968,12 @@ function ConditionsManager({
     { key: "score",             label: "Score"             },
     { key: "reviews",           label: "Reviews"           },
     { key: "priceBuckets",      label: "Price"             },
-    { key: "isChain",           label: "Chain"             },
     { key: "hasPhone",          label: "Has phone"         },
     { key: "hasWebsite",        label: "Has website"       },
     { key: "hasAddress",        label: "Has address"       },
     { key: "hasCoordinates",    label: "Has coordinates"   },
+    { key: "approvalStatuses",      label: "Approval status"   },
+    { key: "isChain",           label: "Chain"             },
   ];
   const ignoredCount = groups.filter((g) => !enabled[g.key]).length;
   return (
@@ -947,11 +1055,50 @@ function countApplied(f: Filters): number {
   )) n++;
   if (e.reviews && (f.minReviews > 0 || f.maxReviews != null))   n++;
   if (e.priceBuckets      && f.priceBuckets.length)              n++;
-  if (e.isChain           && f.isChainOnly != null)              n++;
+  if (e.isChain           && f.isChainOnly !== false)            n++;
   if (e.hasPhone          && f.hasPhone != null)                 n++;
   if (e.hasWebsite        && f.hasWebsite != null)               n++;
   if (e.hasAddress        && f.hasAddress != null)               n++;
   if (e.hasCoordinates    && f.hasCoordinates != null)           n++;
+  if (e.approvalStatuses && f.approvalStatuses.length && !isDefaultApprovalStatuses(f.approvalStatuses)) n++;
   return n;
+}
+
+function ApprovalStatusPicker({
+  selected,
+  onChange,
+  disabled,
+}: {
+  selected: ApprovalStatus[];
+  onChange: (next: ApprovalStatus[]) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {ALL_APPROVAL_STATUSES.map((s) => {
+        const checked = selected.includes(s);
+        return (
+          <button
+            key={s}
+            onClick={() => {
+              onChange(
+                checked ? selected.filter((x) => x !== s) : [...selected, s],
+              );
+            }}
+            disabled={disabled}
+            className={cn(
+              "px-2.5 py-1 rounded-md border text-xs font-medium transition-colors",
+              "disabled:opacity-50 disabled:cursor-not-allowed",
+              checked
+                ? "bg-primary text-primary-foreground border-primary"
+                : "border-border bg-card/30 hover:bg-card/60",
+            )}
+          >
+            {APPROVAL_STATUS_LABELS[s]}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
