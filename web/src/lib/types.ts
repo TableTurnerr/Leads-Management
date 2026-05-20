@@ -34,6 +34,32 @@ export type Restaurant = {
 //   "only"    — keep only null-rated rows (useful for data-quality audits)
 export type RatingNullPolicy = "include" | "exclude" | "only";
 
+export type LeadStatus =
+  | "approved"
+  | "rejected"
+  | "skipped"
+  | "pending"
+  | "downloaded"
+  | "sentToSheets";
+
+export const ALL_LEAD_STATUSES: LeadStatus[] = [
+  "approved",
+  "rejected",
+  "skipped",
+  "pending",
+  "downloaded",
+  "sentToSheets",
+];
+
+export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
+  approved: "Approved",
+  rejected: "Rejected",
+  skipped: "Skipped",
+  pending: "Pending",
+  downloaded: "Downloaded",
+  sentToSheets: "Sent to Sheets",
+};
+
 // Each top-level key on `enabled` corresponds to a filter group. When a key
 // is false the filter is "ignored" — its values are preserved in state so
 // the user can re-enable without re-entering, but no predicate is applied.
@@ -51,6 +77,7 @@ export type FilterEnabled = {
   hasAddress: boolean;
   hasCoordinates: boolean;
   search: boolean;
+  leadStatuses: boolean;
 };
 
 export type Filters = {
@@ -70,6 +97,7 @@ export type Filters = {
   hasAddress: boolean | null;
   hasCoordinates: boolean | null;
   search: string;
+  leadStatuses: LeadStatus[];
   enabled: FilterEnabled;
 };
 
@@ -95,6 +123,7 @@ export const DEFAULT_ENABLED: FilterEnabled = {
   hasAddress: true,
   hasCoordinates: true,
   search: true,
+  leadStatuses: true,
 };
 
 export const DEFAULT_FILTERS: Filters = {
@@ -114,5 +143,6 @@ export const DEFAULT_FILTERS: Filters = {
   hasAddress: null,
   hasCoordinates: null,
   search: "",
+  leadStatuses: [],
   enabled: DEFAULT_ENABLED,
 };
