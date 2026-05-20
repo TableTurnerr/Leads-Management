@@ -48,6 +48,11 @@ export async function POST(request: Request) {
     ? Math.max(1, Math.min(PREVIEW_MAX, body.previewSize ?? 500))
     : MAX_ROWS;
 
+  // Previews aren't logged — only the real downloads are.
+  const user = isPreview
+    ? null
+    : (await supabase.auth.getUser()).data.user;
+
   const encoder = new TextEncoder();
   const filename = `restaurants_${isPreview ? "preview" : "filtered"}_${new Date()
     .toISOString()
@@ -55,13 +60,12 @@ export async function POST(request: Request) {
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let afterId: number | null = null;
+      let written = 0;
       try {
         controller.enqueue(
           encoder.encode(COLS.map(([, lbl]) => lbl).join(",") + "\n"),
         );
-
-        let afterId: number | null = null;
-        let written = 0;
 
         while (written < cap) {
           const wantBatch = Math.min(BATCH, cap - written);
@@ -91,6 +95,23 @@ export async function POST(request: Request) {
         }
       } finally {
         controller.close();
+        if (!isPreview && user) {
+          // A logging failure must not corrupt the CSV the client is
+          // already receiving, so swallow any error.
+          try {
+            await supabase.from("lead_action_logs").insert({
+              user_id: user.id,
+              user_email: user.email,
+              action: "csv_download",
+              source: "table_full_export",
+              row_count: written,
+              filters: body.filters,
+              metadata: { filename },
+            });
+          } catch {
+            // intentionally swallowed
+          }
+        }
       }
     },
   });

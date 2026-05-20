@@ -24,10 +24,16 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = (await request.json()) as { rows: unknown[] };
+  const body = (await request.json()) as {
+    rows: Array<Record<string, unknown>>;
+  };
   if (!Array.isArray(body.rows) || body.rows.length === 0) {
     return NextResponse.json({ error: "No rows to send" }, { status: 400 });
   }
+
+  const restaurantIds = body.rows
+    .map((r) => (typeof r?.id === "number" ? (r.id as number) : null))
+    .filter((n): n is number => n != null);
 
   let res: Response;
   try {
@@ -61,5 +67,27 @@ export async function POST(request: Request) {
     );
   }
 
+  try {
+    await supabase.from("lead_action_logs").insert({
+      user_id: user.id,
+      user_email: user.email,
+      action: "send_to_sheets",
+      source: "selected_tab",
+      row_count: body.rows.length,
+      restaurant_ids: restaurantIds.length ? restaurantIds : null,
+      metadata: { webhook_host: safeHost(webhook) },
+    });
+  } catch {
+    // Logging is best-effort — the user's send already succeeded.
+  }
+
   return NextResponse.json({ ok: true, count: body.rows.length });
+}
+
+function safeHost(url: string): string | null {
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
 }
