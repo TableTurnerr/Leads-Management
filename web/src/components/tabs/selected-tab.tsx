@@ -67,7 +67,7 @@ export function SelectedTab() {
         <p>No restaurants selected.</p>
         <p className="text-sm mt-1">
           Open the Map tab, click the box-select or lasso tool on the
-          mapbox toolbar, and drag over the map.
+          map toolbar, and drag over the map.
         </p>
       </div>
     );

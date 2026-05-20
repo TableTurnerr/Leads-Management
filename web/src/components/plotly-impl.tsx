@@ -10,11 +10,19 @@ import Plotly from "plotly.js/lib/core";
 import bar from "plotly.js/lib/bar";
 import pie from "plotly.js/lib/pie";
 import histogram from "plotly.js/lib/histogram";
-import scattermapbox from "plotly.js/lib/scattermapbox";
+import scattermap from "plotly.js/lib/scattermap";
 import createPlotComponent from "react-plotly.js/factory";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-(Plotly as any).register([bar, pie, histogram, scattermapbox]);
+(Plotly as any).register([bar, pie, histogram, scattermap]);
+
+// Expose the custom Plotly build globally so call sites outside the chart
+// component (e.g. focus / programmatic relayout) can invoke Plotly.relayout
+// without re-importing the heavy module.
+if (typeof window !== "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (window as any).Plotly = Plotly;
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const Plot = createPlotComponent(Plotly as any);
