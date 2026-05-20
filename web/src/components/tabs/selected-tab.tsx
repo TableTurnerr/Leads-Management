@@ -1,10 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { useAppStore } from "@/lib/store";
 import { postQuery } from "@/lib/fetcher";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { MetricCard } from "@/components/metric-card";
 import { PlotlyChart } from "@/components/plotly-chart";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,10 +18,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { toast } from "sonner";
-import { Download, Send } from "lucide-react";
+import { Download, Send, ClipboardCheck, FilterX } from "lucide-react";
 import type { Layout, Data as PlotlyData } from "plotly.js";
 import type { Restaurant } from "@/lib/types";
+import { APPROVAL_STATUS_LABELS } from "@/lib/types";
+import {
+  getApprovalStatuses,
+  approvalStatusToneClass,
+  rowMatchesApprovalStatuses,
+} from "@/lib/approval-status";
 import { logLeadAction } from "@/lib/log-action";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 const BASE_LAYOUT: Partial<Layout> = {
@@ -47,7 +55,24 @@ const SHOW_COLS: { key: keyof Restaurant; label: string }[] = [
 export function SelectedTab() {
   const selectedIds = useAppStore((s) => s.selectedIds);
   const clearSelection = useAppStore((s) => s.clearSelection);
+  const startApproval = useAppStore((s) => s.startApproval);
+  const approvalStatuses = useAppStore((s) => s.filters.approvalStatuses);
+  const approvalStatusesEnabled = useAppStore((s) => s.filters.enabled.approvalStatuses);
+  const approvedIds = useAppStore((s) => s.approvedIds);
+  const rejectedIds = useAppStore((s) => s.rejectedIds);
+  const skippedIds = useAppStore((s) => s.skippedIds);
+  const downloadedIds = useAppStore((s) => s.downloadedIds);
+  const sentToSheetsIds = useAppStore((s) => s.sentToSheetsIds);
+  const markDownloaded = useAppStore((s) => s.markDownloaded);
+  const markSentToSheets = useAppStore((s) => s.markSentToSheets);
+  const showAllSelected = useAppStore((s) => s.showAllSelected);
+  const setShowAllSelected = useAppStore((s) => s.setShowAllSelected);
   const [sending, setSending] = useState(false);
+
+  const flags = useMemo(
+    () => ({ approvedIds, rejectedIds, skippedIds, downloadedIds, sentToSheetsIds }),
+    [approvedIds, rejectedIds, skippedIds, downloadedIds, sentToSheetsIds],
+  );
 
   const idsKey = useMemo(
     () => (selectedIds.length ? [...selectedIds].sort((a, b) => a - b).join(",") : null),
@@ -60,7 +85,13 @@ export function SelectedTab() {
     { revalidateOnFocus: false, keepPreviousData: true },
   );
 
-  const rows = useMemo(() => data?.rows ?? [], [data]);
+  const allRows = useMemo(() => data?.rows ?? [], [data]);
+  const filteredRows = useMemo(() => {
+    if (!approvalStatusesEnabled || approvalStatuses.length === 0) return allRows;
+    return allRows.filter((r) => rowMatchesApprovalStatuses(r.id, approvalStatuses, flags));
+  }, [allRows, approvalStatuses, approvalStatusesEnabled, flags]);
+  const rows = showAllSelected ? allRows : filteredRows;
+  const hiddenByFilters = allRows.length > 0 && filteredRows.length === 0 && !showAllSelected;
 
   // Snapshot the active selection to the audit log once it settles. We key on
   // idsKey so re-renders that don't change the selection don't re-log, and we
@@ -87,6 +118,31 @@ export function SelectedTab() {
           Open the Map tab, click the box-select or lasso tool on the
           map toolbar, and drag over the map.
         </p>
+      </div>
+    );
+  }
+
+  if (!isLoading && hiddenByFilters) {
+    return (
+      <div className="rounded-lg border border-dashed border-border p-10 text-center text-muted-foreground space-y-4">
+        <FilterX className="mx-auto h-8 w-8 opacity-40" />
+        <div>
+          <p className="font-medium text-foreground">
+            {selectedIds.length} selection{selectedIds.length !== 1 ? "s" : ""} hidden by filters
+          </p>
+          <p className="text-sm mt-1">
+            Your active approval-status filter is excluding all selected leads from this view.
+          </p>
+        </div>
+        <div className="flex justify-center gap-3">
+          <Button onClick={() => setShowAllSelected(true)}>
+            <FilterX className="h-4 w-4 mr-1" />
+            Show all {selectedIds.length} leads
+          </Button>
+          <Button variant="outline" onClick={clearSelection}>
+            Clear selection
+          </Button>
+        </div>
       </div>
     );
   }
@@ -152,6 +208,7 @@ export function SelectedTab() {
       });
       const out = await res.json();
       if (!res.ok) throw new Error(out?.error ?? `Sheets webhook failed (${res.status})`);
+      markSentToSheets(rows.map((r) => r.id));
       toast.success(`Sent ${rows.length} restaurants to Sheets.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unknown error";
@@ -180,6 +237,7 @@ export function SelectedTab() {
     a.download = "selected_restaurants.csv";
     a.click();
     URL.revokeObjectURL(url);
+    markDownloaded(rows.map((r) => r.id));
     void logLeadAction({
       action: "csv_download",
       source: "selected_tab",
@@ -196,10 +254,20 @@ export function SelectedTab() {
           {selectedIds.length} restaurants selected
         </h2>
         <div className="flex gap-2">
-          <Button onClick={sendToSheets} disabled={sending || !rows.length}>
-            <Send className="h-4 w-4 mr-1" />
-            {sending ? "Sending…" : "Send to Sheets"}
+          <Button
+            onClick={() => startApproval(selectedIds)}
+            disabled={!selectedIds.length}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            <ClipboardCheck className="h-4 w-4 mr-1" />
+            Approval Mode
           </Button>
+          <span title="Work in Progress" className="cursor-not-allowed">
+            <Button disabled>
+              <Send className="h-4 w-4 mr-1" />
+              Send to Sheets
+            </Button>
+          </span>
           <Button variant="outline" onClick={downloadCsv} disabled={!rows.length}>
             <Download className="h-4 w-4 mr-1" />
             Download CSV
@@ -209,6 +277,22 @@ export function SelectedTab() {
           </Button>
         </div>
       </div>
+      {showAllSelected && (
+        <div className="flex items-center gap-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-300">
+          <FilterX className="h-4 w-4 shrink-0" />
+          <span className="flex-1">
+            Showing all selections — approval-status filter is bypassed.
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-amber-300 hover:text-amber-100 hover:bg-amber-500/20"
+            onClick={() => setShowAllSelected(false)}
+          >
+            Restore filter
+          </Button>
+        </div>
+      )}
       <p className="text-xs text-muted-foreground -mt-3">
         Make sure your Apps Script webhook URL is set in{" "}
         <Link href="/settings" className="underline underline-offset-2">
@@ -281,6 +365,7 @@ export function SelectedTab() {
         <Table>
           <TableHeader className="sticky top-0 bg-card z-10">
             <TableRow>
+              <TableHead>Status</TableHead>
               {SHOW_COLS.map((c) => (
                 <TableHead key={c.key}>{c.label}</TableHead>
               ))}
@@ -289,6 +374,9 @@ export function SelectedTab() {
           <TableBody>
             {rows.map((r) => (
               <TableRow key={r.id}>
+                <TableCell>
+                  <ApprovalStatusBadges id={r.id} flags={flags} />
+                </TableCell>
                 {SHOW_COLS.map((c) => {
                   const v = r[c.key];
                   if (c.key === "website" && v) {
@@ -312,6 +400,31 @@ export function SelectedTab() {
           </TableBody>
         </Table>
       </div>
+    </div>
+  );
+}
+
+function ApprovalStatusBadges({
+  id,
+  flags,
+}: {
+  id: number;
+  flags: Parameters<typeof getApprovalStatuses>[1];
+}) {
+  const statuses = getApprovalStatuses(id, flags);
+  return (
+    <div className="flex flex-wrap gap-1">
+      {statuses.map((s) => (
+        <Badge
+          key={s}
+          className={cn(
+            "text-[10px] px-1.5 py-0.5 font-medium",
+            approvalStatusToneClass(s),
+          )}
+        >
+          {APPROVAL_STATUS_LABELS[s]}
+        </Badge>
+      ))}
     </div>
   );
 }
