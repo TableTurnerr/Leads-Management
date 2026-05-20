@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthClient, createDataClient } from "@/lib/supabase/server";
 import { SettingsForm } from "./settings-form";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,19 +13,20 @@ import {
 import { ArrowLeft, ArrowRight, Ban } from "lucide-react";
 
 export default async function SettingsPage() {
-  const supabase = await createClient();
+  const auth = await createAuthClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await auth.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: settings } = await supabase
+  const db = await createDataClient();
+  const { data: settings } = await db
     .from("user_settings")
     .select("sheets_webhook_url")
     .eq("user_id", user.id)
     .maybeSingle();
 
-  const { count: chainCount } = await supabase
+  const { count: chainCount } = await db
     .from("fast_food_chains")
     .select("*", { count: "exact", head: true });
 

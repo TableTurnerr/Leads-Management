@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createDataClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -46,7 +46,7 @@ export function ChainsManager({
   );
 
   async function refreshList() {
-    const supabase = createClient();
+    const supabase = createDataClient();
     const { data, error } = await supabase.rpc("chains_list");
     if (error) {
       toast.error(`Could not refresh: ${error.message}`);
@@ -60,7 +60,7 @@ export function ChainsManager({
     const name = newName.trim();
     if (!name) return;
     setAdding(true);
-    const supabase = createClient();
+    const supabase = createDataClient();
     const { data, error } = await supabase.rpc("chains_add", { p_name: name });
     setAdding(false);
     if (error) {
@@ -88,7 +88,7 @@ export function ChainsManager({
       return;
     }
     setRemoving(name);
-    const supabase = createClient();
+    const supabase = createDataClient();
     const { data, error } = await supabase.rpc("chains_remove", { p_name: name });
     setRemoving(null);
     if (error) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createAuthClient, createDataClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,15 +27,16 @@ export function SettingsForm({
   async function onSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    const supabase = createClient();
-    const { data: userData } = await supabase.auth.getUser();
+    const auth = createAuthClient();
+    const { data: userData } = await auth.auth.getUser();
     if (!userData.user) {
       toast.error("Not signed in.");
       setSaving(false);
       return;
     }
     const trimmed = url.trim() || null;
-    const { error } = await supabase.from("user_settings").upsert({
+    const db = createDataClient();
+    const { error } = await db.from("user_settings").upsert({
       user_id: userData.user.id,
       sheets_webhook_url: trimmed,
       updated_at: new Date().toISOString(),

@@ -1,18 +1,19 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthClient, createDataClient } from "@/lib/supabase/server";
 import { ChainsManager, type ChainRow } from "./chains-manager";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
 
 export default async function ChainsPage() {
-  const supabase = await createClient();
+  const auth = await createAuthClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await auth.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data, error } = await supabase.rpc("chains_list");
+  const db = await createDataClient();
+  const { data, error } = await db.rpc("chains_list");
   const initial: ChainRow[] = error ? [] : ((data ?? []) as ChainRow[]);
 
   return (
