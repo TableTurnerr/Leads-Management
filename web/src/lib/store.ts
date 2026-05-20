@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { create } from "zustand";
 import {
@@ -6,7 +6,13 @@ import {
   createJSONStorage,
   type StateStorage,
 } from "zustand/middleware";
-import { DEFAULT_FILTERS, type FilterEnabled, type Filters } from "./types";
+import {
+  DEFAULT_ENABLED,
+  DEFAULT_FILTERS,
+  DEFAULT_APPROVAL_STATUSES,
+  type FilterEnabled,
+  type Filters,
+} from "./types";
 import { loadSelectedIds, saveSelectedIds } from "./selected-ids-storage";
 
 export type TabKey =
@@ -77,6 +83,27 @@ type AppState = {
   setColumnExplorerCol: (c: string) => void;
   setColumnExplorerTopN: (n: number) => void;
 
+  approvalMode: boolean;
+  approvalQueue: number[];
+  approvalIndex: number;
+  approvedIds: number[];
+  rejectedIds: number[];
+  skippedIds: number[];
+  downloadedIds: number[];
+  sentToSheetsIds: number[];
+  startApproval: (ids: number[]) => void;
+  exitApproval: () => void;
+  setApprovalIndex: (i: number) => void;
+  markApproved: (id: number) => void;
+  markRejected: (id: number) => void;
+  markSkipped: (id: number) => void;
+  markDownloaded: (ids: number[]) => void;
+  markSentToSheets: (ids: number[]) => void;
+  clearApprovalStatuses: () => void;
+
+  showAllSelected: boolean;
+  setShowAllSelected: (v: boolean) => void;
+
   hasHydrated: boolean;
   setHasHydrated: (v: boolean) => void;
 };
@@ -110,7 +137,7 @@ export const useAppStore = create<AppState>()(
 
       selectedIds: [],
       setSelectedIds: (ids) => set({ selectedIds: ids }),
-      clearSelection: () => set({ selectedIds: [] }),
+      clearSelection: () => set({ selectedIds: [], showAllSelected: false }),
 
       activeTab: "overview",
       setActiveTab: (t) => set({ activeTab: t }),
@@ -137,12 +164,87 @@ export const useAppStore = create<AppState>()(
       setColumnExplorerCol: (c) => set({ columnExplorerCol: c }),
       setColumnExplorerTopN: (n) => set({ columnExplorerTopN: n }),
 
+      approvalMode: false,
+      approvalQueue: [],
+      approvalIndex: 0,
+      approvedIds: [],
+      rejectedIds: [],
+      skippedIds: [],
+      downloadedIds: [],
+      sentToSheetsIds: [],
+      startApproval: (ids) =>
+        set({
+          approvalMode: true,
+          approvalQueue: ids,
+          approvalIndex: 0,
+          approvedIds: [],
+          rejectedIds: [],
+          skippedIds: [],
+        }),
+      exitApproval: () => set({ approvalMode: false }),
+      setApprovalIndex: (i) => set({ approvalIndex: i }),
+      markApproved: (id) =>
+        set((s) => ({
+          approvedIds: s.approvedIds.includes(id)
+            ? s.approvedIds
+            : [...s.approvedIds, id],
+          rejectedIds: s.rejectedIds.filter((x) => x !== id),
+          skippedIds: s.skippedIds.filter((x) => x !== id),
+        })),
+      markRejected: (id) =>
+        set((s) => ({
+          rejectedIds: s.rejectedIds.includes(id)
+            ? s.rejectedIds
+            : [...s.rejectedIds, id],
+          approvedIds: s.approvedIds.filter((x) => x !== id),
+          skippedIds: s.skippedIds.filter((x) => x !== id),
+        })),
+      markSkipped: (id) =>
+        set((s) => ({
+          skippedIds: s.skippedIds.includes(id)
+            ? s.skippedIds
+            : [...s.skippedIds, id],
+          approvedIds: s.approvedIds.filter((x) => x !== id),
+          rejectedIds: s.rejectedIds.filter((x) => x !== id),
+        })),
+      markDownloaded: (ids) =>
+        set((s) => {
+          if (!ids.length) return {} as Partial<AppState>;
+          const seen = new Set(s.downloadedIds);
+          const next = [...s.downloadedIds];
+          for (const id of ids) if (!seen.has(id)) { seen.add(id); next.push(id); }
+          return next.length === s.downloadedIds.length
+            ? ({} as Partial<AppState>)
+            : { downloadedIds: next };
+        }),
+      markSentToSheets: (ids) =>
+        set((s) => {
+          if (!ids.length) return {} as Partial<AppState>;
+          const seen = new Set(s.sentToSheetsIds);
+          const next = [...s.sentToSheetsIds];
+          for (const id of ids) if (!seen.has(id)) { seen.add(id); next.push(id); }
+          return next.length === s.sentToSheetsIds.length
+            ? ({} as Partial<AppState>)
+            : { sentToSheetsIds: next };
+        }),
+      clearApprovalStatuses: () =>
+        set({
+          approvedIds: [],
+          rejectedIds: [],
+          skippedIds: [],
+          downloadedIds: [],
+          sentToSheetsIds: [],
+        }),
+
+      showAllSelected: false,
+      setShowAllSelected: (v) => set({ showAllSelected: v }),
+
       hasHydrated: false,
       setHasHydrated: (v) => set({ hasHydrated: v }),
     }),
     {
       name: "tt-app-state-v1",
-      version: 5,
+      version: 9,
       storage: createJSONStorage(safeStorage),
       migrate: (persisted, version) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -167,6 +269,42 @@ export const useAppStore = create<AppState>()(
         }
         // v4 → v5: selectedIds moved to its own compact storage key. Keep the
         // old array around so onRehydrateStorage can migrate it on first run.
+        if (version < 6 && s?.filters) {
+          if (!Array.isArray(s.filters.approvalStatuses)) {
+            s.filters.approvalStatuses = [];
+          }
+          if (s.filters.enabled && s.filters.enabled.approvalStatuses == null) {
+            s.filters.enabled.approvalStatuses = true;
+          }
+        }
+        // v6 → v7: approval-status default flipped from [] (show all) to
+        // "everything except rejected". Upgrade existing users who were
+        // still on the old default; preserve anyone with a real selection.
+        if (version < 7 && s?.filters) {
+          if (
+            !Array.isArray(s.filters.approvalStatuses) ||
+            s.filters.approvalStatuses.length === 0
+          ) {
+            s.filters.approvalStatuses = [...DEFAULT_APPROVAL_STATUSES];
+          }
+        }
+        if (version < 8 && s?.filters && s.filters.isChainOnly == null) {
+          s.filters.isChainOnly = false;
+        }
+        // v8 → v9: filter key renamed from leadStatuses to approvalStatuses
+        // (matches the renamed UI section and SQL params).
+        if (version < 9 && s?.filters) {
+          if (Array.isArray(s.filters.leadStatuses) && !Array.isArray(s.filters.approvalStatuses)) {
+            s.filters.approvalStatuses = s.filters.leadStatuses;
+          }
+          delete s.filters.leadStatuses;
+          if (s.filters.enabled) {
+            if (s.filters.enabled.leadStatuses != null && s.filters.enabled.approvalStatuses == null) {
+              s.filters.enabled.approvalStatuses = s.filters.enabled.leadStatuses;
+            }
+            delete s.filters.enabled.leadStatuses;
+          }
+        }
         return s;
       },
       // Only the user-visible slice is persisted. Setter identities, the
@@ -184,9 +322,31 @@ export const useAppStore = create<AppState>()(
         categoriesTopN: s.categoriesTopN,
         columnExplorerCol: s.columnExplorerCol,
         columnExplorerTopN: s.columnExplorerTopN,
+        approvalMode: s.approvalMode,
+        approvalQueue: s.approvalQueue,
+        approvalIndex: s.approvalIndex,
+        approvedIds: s.approvedIds,
+        rejectedIds: s.rejectedIds,
+        skippedIds: s.skippedIds,
+        downloadedIds: s.downloadedIds,
+        sentToSheetsIds: s.sentToSheetsIds,
+        showAllSelected: s.showAllSelected,
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
+        // Backfill any filter keys missing from older persisted state so
+        // components can rely on every field being defined.
+        state.filters = {
+          ...DEFAULT_FILTERS,
+          ...state.filters,
+          enabled: {
+            ...DEFAULT_ENABLED,
+            ...(state.filters?.enabled ?? {}),
+          },
+        };
+        if (!Array.isArray(state.filters.approvalStatuses)) {
+          state.filters.approvalStatuses = [...DEFAULT_APPROVAL_STATUSES];
+        }
         if (typeof window !== "undefined") {
           const fromCompact = loadSelectedIds();
           if (fromCompact.length) {
