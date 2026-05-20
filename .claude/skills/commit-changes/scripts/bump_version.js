@@ -27,7 +27,7 @@ try {
   while (parts.length < 3) parts.push(0);
   const [major, minor, patch] = parts;
 
-  let newVersion: string;
+  let newVersion;
   if (bumpType === 'major') {
     newVersion = `${major + 1}.0.0`;
   } else if (bumpType === 'patch') {
