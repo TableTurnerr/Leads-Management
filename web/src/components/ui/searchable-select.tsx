@@ -115,7 +115,7 @@ export function SearchableSelect({
               className="h-8 text-xs border-0 border-b border-border rounded-none rounded-t-lg focus-visible:ring-0 focus-visible:border-border"
             />
             <div
-              className="overflow-y-auto py-1"
+              className="overflow-y-auto py-1 scrollbar-custom"
               style={{ maxHeight: maxListHeight }}
             >
               {clearLabel != null && (
