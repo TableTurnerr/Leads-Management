@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthClient, createDataClient } from "@/lib/supabase/server";
 
 type SelectionRow = {
   restaurant_ids: number[];
@@ -7,15 +7,16 @@ type SelectionRow = {
 };
 
 export async function GET() {
-  const supabase = await createClient();
+  const auth = await createAuthClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await auth.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const { data, error } = await supabase
+  const db = await createDataClient();
+  const { data, error } = await db
     .from("user_selections")
     .select("restaurant_ids, updated_at")
     .eq("user_id", user.id)
@@ -32,10 +33,10 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const supabase = await createClient();
+  const auth = await createAuthClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await auth.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
@@ -56,7 +57,8 @@ export async function PUT(request: Request) {
     if (typeof v === "number" && Number.isInteger(v) && v >= 0) ids.push(v);
   }
 
-  const { data, error } = await supabase
+  const db = await createDataClient();
+  const { data, error } = await db
     .from("user_selections")
     .upsert(
       {

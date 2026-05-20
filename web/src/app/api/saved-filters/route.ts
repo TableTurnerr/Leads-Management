@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthClient, createDataClient } from "@/lib/supabase/server";
 
 export type SavedFilterRow = {
   id: string;
@@ -11,15 +11,16 @@ export type SavedFilterRow = {
 };
 
 export async function GET() {
-  const supabase = await createClient();
+  const auth = await createAuthClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await auth.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const { data, error } = await supabase
+  const db = await createDataClient();
+  const { data, error } = await db
     .from("saved_filters")
     .select("id, name, scope, filters, user_id, created_at")
     .order("scope", { ascending: true })
@@ -33,10 +34,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
+  const auth = await createAuthClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await auth.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
@@ -61,7 +62,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid filters payload" }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  const db = await createDataClient();
+  const { data, error } = await db
     .from("saved_filters")
     .insert({ user_id: user.id, name, scope, filters })
     .select("id, name, scope, filters, user_id, created_at")

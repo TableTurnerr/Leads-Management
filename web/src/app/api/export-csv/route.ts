@@ -1,4 +1,4 @@
-﻿import { createClient } from "@/lib/supabase/server";
+﻿import { createAuthClient, createDataClient } from "@/lib/supabase/server";
 import { filtersToRpcArgs, type ApprovalFlagsPayload } from "@/lib/filters";
 import type { Filters } from "@/lib/types";
 
@@ -40,7 +40,7 @@ type Body = {
 };
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
+  const supabase = await createDataClient();
   const body = (await request.json()) as Body;
   const args = filtersToRpcArgs(body.filters, body.approvalFlags);
 
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
   // Previews aren't logged — only the real downloads are.
   const user = isPreview
     ? null
-    : (await supabase.auth.getUser()).data.user;
+    : (await (await createAuthClient()).auth.getUser()).data.user;
 
   const encoder = new TextEncoder();
   const filename = `restaurants_${isPreview ? "preview" : "filtered"}_${new Date()

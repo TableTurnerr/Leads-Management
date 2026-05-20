@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthClient, createDataClient } from "@/lib/supabase/server";
 
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const supabase = await createClient();
+  const auth = await createAuthClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await auth.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
@@ -17,7 +17,8 @@ export async function DELETE(
   // RLS already restricts delete to the owner; the explicit user_id match is a
   // belt-and-braces guard that also lets us distinguish "not yours" from
   // "didn't exist" via the row count.
-  const { error, count } = await supabase
+  const db = await createDataClient();
+  const { error, count } = await db
     .from("saved_filters")
     .delete({ count: "exact" })
     .eq("id", id)

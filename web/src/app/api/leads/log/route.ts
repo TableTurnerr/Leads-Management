@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthClient, createDataClient } from "@/lib/supabase/server";
 
 type LogAction =
   | "csv_download"
@@ -35,10 +35,10 @@ const ALLOWED: LogAction[] = [
 const MAX_IDS = 50_000;
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
+  const auth = await createAuthClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await auth.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
@@ -58,7 +58,8 @@ export async function POST(request: Request) {
     ? body.restaurantIds.slice(0, MAX_IDS).filter((n) => Number.isFinite(n))
     : null;
 
-  const { error } = await supabase.from("lead_action_logs").insert({
+  const db = await createDataClient();
+  const { error } = await db.from("lead_action_logs").insert({
     user_id: user.id,
     user_email: user.email,
     action: body.action,

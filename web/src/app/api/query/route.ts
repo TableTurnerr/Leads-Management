@@ -1,6 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import { gzipSync, brotliCompressSync, constants as zlibConstants } from "node:zlib";
-import { createClient } from "@/lib/supabase/server";
+import { createDataClient } from "@/lib/supabase/server";
 import {
   fetchOverview,
   fetchMapPointArrays,
@@ -85,7 +85,7 @@ type Body =
     };
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
+  const supabase = await createDataClient();
   const body = (await request.json()) as Body;
   const acceptEncoding = request.headers.get("accept-encoding");
 

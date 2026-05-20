@@ -1,16 +1,17 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthClient, createDataClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
+  const auth = await createAuthClient();
   const {
     data: { user },
-  } = await supabase.auth.getUser();
+  } = await auth.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
-  const { data: settings } = await supabase
+  const db = await createDataClient();
+  const { data: settings } = await db
     .from("user_settings")
     .select("sheets_webhook_url")
     .eq("user_id", user.id)
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    await supabase.from("lead_action_logs").insert({
+    await db.from("lead_action_logs").insert({
       user_id: user.id,
       user_email: user.email,
       action: "send_to_sheets",
