@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { gzipSync, brotliCompressSync, constants as zlibConstants } from "node:zlib";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -11,6 +11,7 @@ import {
   fetchColumnValues,
 } from "@/lib/queries";
 import type { Filters } from "@/lib/types";
+import type { ApprovalFlagsPayload } from "@/lib/filters";
 
 // Next.js dev mode doesn't compress responses on its own. The unfiltered
 // map payload is several megabytes of JSON over a Singapore round trip,
@@ -56,8 +57,8 @@ function jsonResponse(payload: unknown, acceptEncoding: string | null) {
 }
 
 type Body =
-  | { type: "overview"; filters: Filters }
-  | { type: "map"; filters: Filters }
+  | { type: "overview"; filters: Filters; approvalFlags?: ApprovalFlagsPayload | null }
+  | { type: "map"; filters: Filters; approvalFlags?: ApprovalFlagsPayload | null }
   | { type: "by_ids"; ids: number[] }
   | {
       type: "list";
@@ -66,10 +67,22 @@ type Body =
       asc: boolean;
       page: number;
       pageSize: number;
+      approvalFlags?: ApprovalFlagsPayload | null;
     }
   | { type: "category_stats"; topN: number; minCount: number }
-  | { type: "top_categories"; filters: Filters; topN: number }
-  | { type: "column"; filters: Filters; col: string; topN: number };
+  | {
+      type: "top_categories";
+      filters: Filters;
+      topN: number;
+      approvalFlags?: ApprovalFlagsPayload | null;
+    }
+  | {
+      type: "column";
+      filters: Filters;
+      col: string;
+      topN: number;
+      approvalFlags?: ApprovalFlagsPayload | null;
+    };
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -79,10 +92,13 @@ export async function POST(request: Request) {
   try {
     switch (body.type) {
       case "overview":
-        return jsonResponse(await fetchOverview(supabase, body.filters), acceptEncoding);
+        return jsonResponse(
+          await fetchOverview(supabase, body.filters, body.approvalFlags),
+          acceptEncoding,
+        );
       case "map":
         return jsonResponse(
-          await fetchMapPointArrays(supabase, body.filters),
+          await fetchMapPointArrays(supabase, body.filters, body.approvalFlags),
           acceptEncoding,
         );
       case "by_ids":
@@ -107,12 +123,25 @@ export async function POST(request: Request) {
         );
       case "top_categories":
         return jsonResponse(
-          { rows: await fetchTopCategories(supabase, body.filters, body.topN) },
+          {
+            rows: await fetchTopCategories(
+              supabase,
+              body.filters,
+              body.topN,
+              body.approvalFlags,
+            ),
+          },
           acceptEncoding,
         );
       case "column":
         return jsonResponse(
-          await fetchColumnValues(supabase, body.filters, body.col, body.topN),
+          await fetchColumnValues(
+            supabase,
+            body.filters,
+            body.col,
+            body.topN,
+            body.approvalFlags,
+          ),
           acceptEncoding,
         );
       default:

@@ -1,5 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
-import { filtersToRpcArgs } from "@/lib/filters";
+﻿import { createClient } from "@/lib/supabase/server";
+import { filtersToRpcArgs, type ApprovalFlagsPayload } from "@/lib/filters";
 import type { Filters } from "@/lib/types";
 
 // Keep this list in lockstep with the columns the restaurants_export_page
@@ -36,12 +36,13 @@ type Body = {
   filters: Filters;
   mode: "preview" | "full";
   previewSize?: number;
+  approvalFlags?: ApprovalFlagsPayload | null;
 };
 
 export async function POST(request: Request) {
   const supabase = await createClient();
   const body = (await request.json()) as Body;
-  const args = filtersToRpcArgs(body.filters);
+  const args = filtersToRpcArgs(body.filters, body.approvalFlags);
 
   const isPreview = body.mode === "preview";
   const cap = isPreview
