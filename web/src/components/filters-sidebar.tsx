@@ -30,6 +30,7 @@ import {
   Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { SavedFiltersMenu } from "@/components/saved-filters-menu";
 
 const swrFetcher = (url: string) => fetch(url).then((r) => r.json());
 
@@ -102,6 +103,20 @@ export function FiltersSidebar() {
     setDraft(applied);
   }
 
+  // Loading a saved filter replaces both the draft and the applied store in
+  // one shot so the user sees the new values immediately and the next query
+  // runs against them without needing a separate Apply click.
+  function handleLoadSaved(next: Filters) {
+    setDraft(next);
+    (Object.keys(next) as (keyof Filters)[]).forEach((k) => {
+      if (k === "enabled") return;
+      setStoreFilters(k, next[k]);
+    });
+    (Object.keys(next.enabled) as (keyof FilterEnabled)[]).forEach((k) => {
+      setStoreEnabled(k, next.enabled[k]);
+    });
+  }
+
   const [openOrder, setOpenOrder] = useState<SectionKey[]>(DEFAULT_OPEN_ORDER);
   const isOpen = (k: SectionKey) => openOrder.includes(k);
   const toggleSection = (k: SectionKey) =>
@@ -169,6 +184,10 @@ export function FiltersSidebar() {
           )}
         </div>
         <div className="flex items-center gap-1">
+          <SavedFiltersMenu
+            currentFilters={filters}
+            onLoad={handleLoadSaved}
+          />
           <ConditionsManager
             enabled={filters.enabled}
             setEnabled={setEnabled}
@@ -726,7 +745,7 @@ function CheckboxList({
         className="h-7 text-xs border-0 border-b border-border rounded-none focus-visible:ring-0"
       />
       <div
-        className="overflow-y-auto py-1"
+        className="overflow-y-auto py-1 scrollbar-custom"
         style={{ maxHeight }}
       >
         {filtered.length === 0 && (
