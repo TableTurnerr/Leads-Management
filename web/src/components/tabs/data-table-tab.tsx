@@ -39,6 +39,7 @@ import {
 import { toast } from "sonner";
 import { ChevronLeft, ChevronRight, Download, Eye, FileSpreadsheet } from "lucide-react";
 import type { Restaurant } from "@/lib/types";
+import { logLeadAction } from "@/lib/log-action";
 
 const PAGE_SIZE = 200;
 const SHOW_COLS = [
@@ -227,6 +228,14 @@ function ExportMenu({
       .join("\n");
     const blob = new Blob([`${header}\n${body}`], { type: "text/csv" });
     triggerDownload(blob, "restaurants_page.csv");
+    void logLeadAction({
+      action: "csv_download",
+      source: "table_visible_page",
+      restaurantIds: rows.map((r) => r.id),
+      rowCount: rows.length,
+      filters,
+      metadata: { filename: "restaurants_page.csv" },
+    });
   }
 
   async function openPreview() {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
 import { useAppStore } from "@/lib/store";
 import { postQuery } from "@/lib/fetcher";
@@ -20,6 +20,7 @@ import { toast } from "sonner";
 import { Download, Send } from "lucide-react";
 import type { Layout, Data as PlotlyData } from "plotly.js";
 import type { Restaurant } from "@/lib/types";
+import { logLeadAction } from "@/lib/log-action";
 import Link from "next/link";
 
 const BASE_LAYOUT: Partial<Layout> = {
@@ -60,6 +61,23 @@ export function SelectedTab() {
   );
 
   const rows = useMemo(() => data?.rows ?? [], [data]);
+
+  // Snapshot the active selection to the audit log once it settles. We key on
+  // idsKey so re-renders that don't change the selection don't re-log, and we
+  // debounce so dragging-a-lasso doesn't fire a row per intermediate state.
+  const lastLoggedSelection = useRef<string | null>(null);
+  useEffect(() => {
+    if (!idsKey || idsKey === lastLoggedSelection.current) return;
+    const handle = window.setTimeout(() => {
+      lastLoggedSelection.current = idsKey;
+      void logLeadAction({
+        action: "selection_snapshot",
+        source: "selected_tab",
+        restaurantIds: selectedIds,
+      });
+    }, 1500);
+    return () => window.clearTimeout(handle);
+  }, [idsKey, selectedIds]);
 
   if (!selectedIds.length) {
     return (
@@ -162,6 +180,13 @@ export function SelectedTab() {
     a.download = "selected_restaurants.csv";
     a.click();
     URL.revokeObjectURL(url);
+    void logLeadAction({
+      action: "csv_download",
+      source: "selected_tab",
+      restaurantIds: rows.map((r) => r.id),
+      rowCount: rows.length,
+      metadata: { filename: "selected_restaurants.csv" },
+    });
   }
 
   return (
