@@ -7,6 +7,7 @@ import {
   type StateStorage,
 } from "zustand/middleware";
 import { DEFAULT_FILTERS, type FilterEnabled, type Filters } from "./types";
+import { loadSelectedIds, saveSelectedIds } from "./selected-ids-storage";
 
 export type TabKey =
   | "overview"
@@ -28,6 +29,19 @@ export const DEFAULT_MAP_VIEW: MapView = {
 
 export type TableSortCol = "rating" | "ratings" | "name";
 
+export type MapStyle =
+  | "carto-darkmatter"
+  | "open-street-map"
+  | "satellite";
+
+export const DEFAULT_MAP_STYLE: MapStyle = "carto-darkmatter";
+
+export const MAP_STYLE_OPTIONS: { value: MapStyle; label: string }[] = [
+  { value: "carto-darkmatter", label: "Dark" },
+  { value: "open-street-map", label: "Streets" },
+  { value: "satellite", label: "Satellite" },
+];
+
 type AppState = {
   filters: Filters;
   setFilter: <K extends keyof Filters>(key: K, value: Filters[K]) => void;
@@ -44,6 +58,9 @@ type AppState = {
   mapView: MapView;
   setMapView: (v: MapView) => void;
   resetMapView: () => void;
+
+  mapStyle: MapStyle;
+  setMapStyle: (s: MapStyle) => void;
 
   tableSortCol: TableSortCol;
   tableAsc: boolean;
@@ -102,6 +119,9 @@ export const useAppStore = create<AppState>()(
       setMapView: (v) => set({ mapView: v }),
       resetMapView: () => set({ mapView: DEFAULT_MAP_VIEW }),
 
+      mapStyle: DEFAULT_MAP_STYLE,
+      setMapStyle: (s) => set({ mapStyle: s }),
+
       tableSortCol: "rating",
       tableAsc: false,
       tablePage: 1,
@@ -122,7 +142,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "tt-app-state-v1",
-      version: 3,
+      version: 5,
       storage: createJSONStorage(safeStorage),
       migrate: (persisted, version) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -137,15 +157,27 @@ export const useAppStore = create<AppState>()(
           s.filters.categories = [];
           s.filters.excludeCategories = [];
         }
+        if (
+          version < 4 &&
+          (s?.mapStyle === "carto-positron" ||
+            s?.mapStyle === "white-bg" ||
+            s?.mapStyle === "3d")
+        ) {
+          s.mapStyle = DEFAULT_MAP_STYLE;
+        }
+        // v4 → v5: selectedIds moved to its own compact storage key. Keep the
+        // old array around so onRehydrateStorage can migrate it on first run.
         return s;
       },
       // Only the user-visible slice is persisted. Setter identities, the
       // hydration flag, and any transient derived state stay out of storage.
+      // selectedIds is intentionally excluded — it lives in its own key with
+      // a compact varint/bitset encoding (see ./selected-ids-storage).
       partialize: (s) => ({
         filters: s.filters,
-        selectedIds: s.selectedIds,
         activeTab: s.activeTab,
         mapView: s.mapView,
+        mapStyle: s.mapStyle,
         tableSortCol: s.tableSortCol,
         tableAsc: s.tableAsc,
         tablePage: s.tablePage,
@@ -154,8 +186,28 @@ export const useAppStore = create<AppState>()(
         columnExplorerTopN: s.columnExplorerTopN,
       }),
       onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated(true);
+        if (!state) return;
+        if (typeof window !== "undefined") {
+          const fromCompact = loadSelectedIds();
+          if (fromCompact.length) {
+            state.selectedIds = fromCompact;
+          } else if (state.selectedIds.length) {
+            // Migrating from v4: pre-existing IDs lived in the main blob.
+            saveSelectedIds(state.selectedIds);
+          }
+        }
+        state.setHasHydrated(true);
       },
     },
   ),
 );
+
+if (typeof window !== "undefined") {
+  let prev = useAppStore.getState().selectedIds;
+  useAppStore.subscribe((s) => {
+    if (s.selectedIds !== prev) {
+      prev = s.selectedIds;
+      saveSelectedIds(s.selectedIds);
+    }
+  });
+}
