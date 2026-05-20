@@ -7,6 +7,7 @@ import { postQuery } from "@/lib/fetcher";
 import { PlotlyChart } from "@/components/plotly-chart";
 import { Button } from "@/components/ui/button";
 import type { MapPointArrays, Restaurant } from "@/lib/types";
+import { useApprovalFlags } from "@/lib/use-approval-flags";
 import type {
   Layout,
   PlotMouseEvent,
@@ -116,9 +117,10 @@ export function MapTab() {
   // the camera instead of staying a fixed pixel size as the user zooms out.
   const [liveZoom, setLiveZoom] = useState(() => initialMapView.zoom);
 
+  const approvalFlags = useApprovalFlags();
   const { data, isLoading } = useSWR<MapPointArrays>(
-    ["map", filters],
-    () => postQuery<MapPointArrays>({ type: "map", filters }),
+    ["map", filters, approvalFlags],
+    () => postQuery<MapPointArrays>({ type: "map", filters, approvalFlags }),
     { revalidateOnFocus: false, keepPreviousData: true, dedupingInterval: 5000 },
   );
 
@@ -172,6 +174,16 @@ export function MapTab() {
       dragmode: "pan",
       font: { color: "#cdd6f4" },
       uirevision: "map-stable",
+      // High-contrast selection outline that reads well on dark, light, and
+      // satellite basemaps. Cyan + dashed stroke + translucent fill.
+      newselection: {
+        line: { color: "#22d3ee", width: 2.5, dash: "dash" },
+        mode: "immediate",
+      },
+      activeselection: {
+        fillcolor: "rgba(34, 211, 238, 0.18)",
+        opacity: 1,
+      },
     } as unknown as Partial<Layout>;
   }, [mapStyle]);
 
@@ -197,6 +209,15 @@ export function MapTab() {
 
   const isSatelliteView = mapStyle === "satellite";
   const selectedIdSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  // Box/lasso selections land here as a *pending* set, displayed as blue pins
+  // until the user confirms. Pending pins that overlap an already-selected
+  // (green) pin are skipped so the green stays authoritative.
+  const [pendingIds, setPendingIds] = useState<number[]>([]);
+  const pendingIdSet = useMemo(() => {
+    const s = new Set<number>();
+    for (const id of pendingIds) if (!selectedIdSet.has(id)) s.add(id);
+    return s;
+  }, [pendingIds, selectedIdSet]);
   // In satellite mode points are fixed pixel-size by default, which looks
   // wrong as the user zooms out (huge dots covering whole cities). Scale them
   // with the camera: roughly linear above zoom 10, clamped so points stay
@@ -214,6 +235,7 @@ export function MapTab() {
         { type: "scattermap", mode: "markers", lat: [], lon: [] } as unknown as PlotData,
       ];
     }
+    const mainOpacity = isSatelliteView ? 0.95 : 0.65;
     const main = {
       type: "scattermap",
       mode: "markers",
@@ -225,60 +247,88 @@ export function MapTab() {
         size: isSatelliteView ? Math.max(2, Math.round(8 * zoomScale)) : 5,
         color: points.rating.map((r) => (r == null ? 0 : r)),
         colorscale: "Plasma",
-        opacity: isSatelliteView ? 0.95 : 0.65,
+        opacity: mainOpacity,
         showscale: true,
       },
+      // Disable plotly's default "fade everything not in the box" behavior so
+      // unselected pins stay fully visible during/after a box-select.
+      selected: { marker: { opacity: mainOpacity } },
+      unselected: { marker: { opacity: mainOpacity } },
     } as unknown as PlotData;
 
-    // Selected pins get their own trace on top: distinctive colour, bigger
-    // size, and a contrast halo so they stand out from the rating gradient.
+    // Selected pins (green) and pending pins (blue) each get their own
+    // overlay trace, drawn above the main trace with a contrast halo.
     const selLat: number[] = [];
     const selLon: number[] = [];
     const selIds: number[] = [];
+    const penLat: number[] = [];
+    const penLon: number[] = [];
+    const penIds: number[] = [];
     for (let i = 0; i < points.id.length; i++) {
-      if (selectedIdSet.has(points.id[i])) {
+      const id = points.id[i];
+      if (selectedIdSet.has(id)) {
         selLat.push(points.lat[i]);
         selLon.push(points.lon[i]);
-        selIds.push(points.id[i]);
+        selIds.push(id);
+      } else if (pendingIdSet.has(id)) {
+        penLat.push(points.lat[i]);
+        penLon.push(points.lon[i]);
+        penIds.push(id);
       }
     }
-    const selectedTraces: PlotData[] = selLat.length > 0
-      ? [
-          {
-            type: "scattermap",
-            mode: "markers",
-            lat: selLat,
-            lon: selLon,
-            hoverinfo: "skip",
-            marker: {
-              size: isSatelliteView ? Math.max(6, Math.round(18 * zoomScale)) : 14,
-              color: "#ffffff",
-              opacity: 0.9,
-            },
-            showlegend: false,
-          } as unknown as PlotData,
-          {
-            type: "scattermap",
-            mode: "markers",
-            lat: selLat,
-            lon: selLon,
-            customdata: selIds,
-            hovertemplate: "Selected<br>Click for details<extra></extra>",
-            marker: {
-              size: isSatelliteView ? Math.max(4, Math.round(12 * zoomScale)) : 9,
-              color: "#22c55e",
-              opacity: 1,
-            },
-            name: "Selected",
-            showlegend: false,
-          } as unknown as PlotData,
-        ]
-      : [];
+
+    const buildOverlay = (
+      lats: number[],
+      lons: number[],
+      ids: number[],
+      color: string,
+      label: string,
+    ): PlotData[] =>
+      lats.length === 0
+        ? []
+        : [
+            {
+              type: "scattermap",
+              mode: "markers",
+              lat: lats,
+              lon: lons,
+              hoverinfo: "skip",
+              marker: {
+                size: isSatelliteView ? Math.max(6, Math.round(18 * zoomScale)) : 14,
+                color: "#ffffff",
+                opacity: 0.95,
+              },
+              showlegend: false,
+              selected: { marker: { opacity: 0.95 } },
+              unselected: { marker: { opacity: 0.95 } },
+            } as unknown as PlotData,
+            {
+              type: "scattermap",
+              mode: "markers",
+              lat: lats,
+              lon: lons,
+              customdata: ids,
+              hovertemplate: `${label}<br>Click for details<extra></extra>`,
+              marker: {
+                size: isSatelliteView ? Math.max(4, Math.round(12 * zoomScale)) : 9,
+                color,
+                opacity: 1,
+              },
+              name: label,
+              showlegend: false,
+              selected: { marker: { opacity: 1 } },
+              unselected: { marker: { opacity: 1 } },
+            } as unknown as PlotData,
+          ];
+
+    // Pending (blue) drawn first so confirmed (green) overlays it where both apply.
+    const pendingTraces = buildOverlay(penLat, penLon, penIds, "#3b82f6", "Pending");
+    const selectedTraces = buildOverlay(selLat, selLon, selIds, "#22c55e", "Selected");
 
     // Scattermap markers don't support a stroke. Against satellite imagery
     // the small dots blend into the terrain, so we draw a white halo trace
     // underneath to act as a contrast outline.
-    if (!isSatelliteView) return [main, ...selectedTraces];
+    if (!isSatelliteView) return [main, ...pendingTraces, ...selectedTraces];
     const halo = {
       type: "scattermap",
       mode: "markers",
@@ -291,9 +341,11 @@ export function MapTab() {
         opacity: 0.85,
       },
       showlegend: false,
+      selected: { marker: { opacity: 0.85 } },
+      unselected: { marker: { opacity: 0.85 } },
     } as unknown as PlotData;
-    return [halo, main, ...selectedTraces];
-  }, [points, isSatelliteView, selectedIdSet, zoomScale]);
+    return [halo, main, ...pendingTraces, ...selectedTraces];
+  }, [points, isSatelliteView, selectedIdSet, pendingIdSet, zoomScale]);
 
   const plotDivRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -334,11 +386,54 @@ export function MapTab() {
   const [popover, setPopover] = useState<PopoverState | null>(null);
 
   function onSelected(ev: Readonly<PlotSelectionEvent> | undefined) {
-    if (!ev?.points) return;
-    const ids = ev.points
-      .map((p) => points.id[p.pointIndex as number])
-      .filter((v): v is number => typeof v === "number");
-    setSelectedIds(ids);
+    if (!ev?.points || ev.points.length === 0) {
+      setPendingIds([]);
+      return;
+    }
+    const set = new Set<number>();
+    for (const p of ev.points) {
+      const cd = (p as unknown as { customdata?: unknown }).customdata;
+      const id =
+        typeof cd === "number"
+          ? cd
+          : Array.isArray(cd)
+            ? (cd[0] as number)
+            : points.id[p.pointIndex as number];
+      if (typeof id === "number") set.add(id);
+    }
+    setPendingIds(Array.from(set));
+  }
+
+  function confirmPending(mode: "add" | "replace") {
+    if (pendingIds.length === 0) return;
+    if (mode === "replace") {
+      setSelectedIds(pendingIds);
+    } else {
+      const merged = Array.from(new Set([...selectedIds, ...pendingIds]));
+      setSelectedIds(merged);
+    }
+    setPendingIds([]);
+    clearPlotSelection();
+  }
+
+  function cancelPending() {
+    setPendingIds([]);
+    clearPlotSelection();
+  }
+
+  function clearPlotSelection() {
+    const plot = plotDivRef.current?.querySelector(".js-plotly-plot") as
+      | HTMLElement
+      | null;
+    if (!plot) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const Plotly = (window as any).Plotly;
+    if (!Plotly) return;
+    try {
+      Plotly.relayout(plot, { selections: [] });
+    } catch {
+      /* older plotly builds — ignore */
+    }
   }
 
   async function onClick(ev: Readonly<PlotMouseEvent>) {
@@ -416,7 +511,7 @@ export function MapTab() {
         <p className="text-sm text-muted-foreground">
           {statusText}
           <span className="hidden md:inline">
-            {" · "}box/lasso to select. Hold space to pan.
+            {" · "}box/lasso to select, then confirm below. Hold space to pan.
           </span>
         </p>
         <div className="flex items-center gap-2">
@@ -462,7 +557,7 @@ export function MapTab() {
             modeBarButtonsToRemove: ["toggleHover"],
           }}
           onSelected={onSelected}
-          onDeselect={(() => clearSelection()) as () => void}
+          onDeselect={(() => setPendingIds([])) as () => void}
           onClick={onClick}
           onRelayout={onRelayout}
         />
@@ -626,6 +721,40 @@ export function MapTab() {
             </div>
           )}
       </div>
+
+      {pendingIds.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 px-4 py-3">
+          <div className="text-sm">
+            <span className="font-medium text-foreground">
+              {pendingIds.length.toLocaleString()} {pendingIds.length === 1 ? "lead" : "leads"}
+            </span>
+            <span className="text-muted-foreground"> in pending selection</span>
+            {selectedIds.length > 0 && (
+              <span className="text-muted-foreground">
+                {" · "}
+                {(() => {
+                  const existing = new Set(selectedIds);
+                  const newCount = pendingIds.filter((id) => !existing.has(id)).length;
+                  return `${newCount.toLocaleString()} new, ${(pendingIds.length - newCount).toLocaleString()} already selected`;
+                })()}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={cancelPending}>
+              Cancel
+            </Button>
+            {selectedIds.length > 0 && (
+              <Button variant="outline" size="sm" onClick={() => confirmPending("replace")}>
+                Replace selection
+              </Button>
+            )}
+            <Button size="sm" onClick={() => confirmPending("add")}>
+              {selectedIds.length > 0 ? "Add to selection" : "Confirm selection"}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

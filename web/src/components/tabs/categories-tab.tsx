@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import useSWR from "swr";
 import { useAppStore } from "@/lib/store";
 import { postQuery } from "@/lib/fetcher";
+import { useApprovalFlags } from "@/lib/use-approval-flags";
 import { PlotlyChart } from "@/components/plotly-chart";
 import { Slider } from "@/components/ui/slider";
 import { Label } from "@/components/ui/label";
@@ -21,12 +22,13 @@ export function CategoriesTab() {
   const filters = useAppStore((s) => s.filters);
   const topN = useAppStore((s) => s.categoriesTopN);
   const setTopN = useAppStore((s) => s.setCategoriesTopN);
+  const approvalFlags = useApprovalFlags();
 
   const { data: top, isLoading: topLoading } = useSWR<{
     rows: { category: string; count: number }[];
   }>(
-    ["top_categories", filters, topN],
-    () => postQuery({ type: "top_categories", filters, topN }),
+    ["top_categories", filters, topN, approvalFlags],
+    () => postQuery({ type: "top_categories", filters, topN, approvalFlags }),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
 

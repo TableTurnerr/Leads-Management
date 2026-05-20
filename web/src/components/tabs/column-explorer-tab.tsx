@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import useSWR from "swr";
 import { useAppStore } from "@/lib/store";
 import { postQuery } from "@/lib/fetcher";
+import { useApprovalFlags } from "@/lib/use-approval-flags";
 import { PlotlyChart } from "@/components/plotly-chart";
 import {
   Select,
@@ -44,10 +45,11 @@ export function ColumnExplorerTab() {
   const topN = useAppStore((s) => s.columnExplorerTopN);
   const setCol = useAppStore((s) => s.setColumnExplorerCol);
   const setTopN = useAppStore((s) => s.setColumnExplorerTopN);
+  const approvalFlags = useApprovalFlags();
 
   const { data, isLoading } = useSWR<ColumnData>(
-    ["column", filters, col, topN],
-    () => postQuery({ type: "column", filters, col, topN }),
+    ["column", filters, col, topN, approvalFlags],
+    () => postQuery({ type: "column", filters, col, topN, approvalFlags }),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
 

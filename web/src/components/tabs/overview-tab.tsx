@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import useSWR from "swr";
 import { useAppStore } from "@/lib/store";
 import { postQuery } from "@/lib/fetcher";
+import { useApprovalFlags } from "@/lib/use-approval-flags";
 import { PlotlyChart } from "@/components/plotly-chart";
 import { MetricCard } from "@/components/metric-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -19,9 +20,11 @@ const PLOT_BG = {
 
 export function OverviewTab() {
   const filters = useAppStore((s) => s.filters);
+  const approvalFlags = useApprovalFlags();
   const { data } = useSWR<OverviewStats>(
-    ["overview", filters],
-    () => postQuery<OverviewStats>({ type: "overview", filters }),
+    ["overview", filters, approvalFlags],
+    () =>
+      postQuery<OverviewStats>({ type: "overview", filters, approvalFlags }),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
 
