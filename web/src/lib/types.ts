@@ -1,4 +1,4 @@
-export type Restaurant = {
+﻿export type Restaurant = {
   id: number;
   name: string;
   address: string | null;
@@ -34,7 +34,7 @@ export type Restaurant = {
 //   "only"    — keep only null-rated rows (useful for data-quality audits)
 export type RatingNullPolicy = "include" | "exclude" | "only";
 
-export type LeadStatus =
+export type ApprovalStatus =
   | "approved"
   | "rejected"
   | "skipped"
@@ -42,7 +42,7 @@ export type LeadStatus =
   | "downloaded"
   | "sentToSheets";
 
-export const ALL_LEAD_STATUSES: LeadStatus[] = [
+export const ALL_APPROVAL_STATUSES: ApprovalStatus[] = [
   "approved",
   "rejected",
   "skipped",
@@ -51,7 +51,13 @@ export const ALL_LEAD_STATUSES: LeadStatus[] = [
   "sentToSheets",
 ];
 
-export const LEAD_STATUS_LABELS: Record<LeadStatus, string> = {
+// Default selection hides rejected leads. The filter is OR-inclusion, so
+// listing everything-but-rejected acts as "exclude rejected".
+export const DEFAULT_APPROVAL_STATUSES: ApprovalStatus[] = ALL_APPROVAL_STATUSES.filter(
+  (s) => s !== "rejected",
+);
+
+export const APPROVAL_STATUS_LABELS: Record<ApprovalStatus, string> = {
   approved: "Approved",
   rejected: "Rejected",
   skipped: "Skipped",
@@ -77,7 +83,7 @@ export type FilterEnabled = {
   hasAddress: boolean;
   hasCoordinates: boolean;
   search: boolean;
-  leadStatuses: boolean;
+  approvalStatuses: boolean;
 };
 
 export type Filters = {
@@ -97,7 +103,7 @@ export type Filters = {
   hasAddress: boolean | null;
   hasCoordinates: boolean | null;
   search: string;
-  leadStatuses: LeadStatus[];
+  approvalStatuses: ApprovalStatus[];
   enabled: FilterEnabled;
 };
 
@@ -123,7 +129,7 @@ export const DEFAULT_ENABLED: FilterEnabled = {
   hasAddress: true,
   hasCoordinates: true,
   search: true,
-  leadStatuses: true,
+  approvalStatuses: true,
 };
 
 export const DEFAULT_FILTERS: Filters = {
@@ -143,6 +149,6 @@ export const DEFAULT_FILTERS: Filters = {
   hasAddress: null,
   hasCoordinates: null,
   search: "",
-  leadStatuses: [],
+  approvalStatuses: DEFAULT_APPROVAL_STATUSES,
   enabled: DEFAULT_ENABLED,
 };

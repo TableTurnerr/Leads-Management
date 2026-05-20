@@ -1,6 +1,11 @@
-import type { LeadStatus } from "./types";
+﻿import { DEFAULT_APPROVAL_STATUSES, type ApprovalStatus } from "./types";
 
-export type LeadStatusFlags = Readonly<{
+export function isDefaultApprovalStatuses(selected: ApprovalStatus[]): boolean {
+  if (selected.length !== DEFAULT_APPROVAL_STATUSES.length) return false;
+  return DEFAULT_APPROVAL_STATUSES.every((s) => selected.includes(s));
+}
+
+export type ApprovalStatusFlags = Readonly<{
   approvedIds: number[];
   rejectedIds: number[];
   skippedIds: number[];
@@ -8,8 +13,8 @@ export type LeadStatusFlags = Readonly<{
   sentToSheetsIds: number[];
 }>;
 
-export function getLeadStatuses(id: number, flags: LeadStatusFlags): LeadStatus[] {
-  const out: LeadStatus[] = [];
+export function getApprovalStatuses(id: number, flags: ApprovalStatusFlags): ApprovalStatus[] {
+  const out: ApprovalStatus[] = [];
   if (flags.approvedIds.includes(id)) out.push("approved");
   else if (flags.rejectedIds.includes(id)) out.push("rejected");
   else if (flags.skippedIds.includes(id)) out.push("skipped");
@@ -19,17 +24,17 @@ export function getLeadStatuses(id: number, flags: LeadStatusFlags): LeadStatus[
   return out;
 }
 
-export function rowMatchesStatuses(
+export function rowMatchesApprovalStatuses(
   id: number,
-  selected: LeadStatus[],
-  flags: LeadStatusFlags,
+  selected: ApprovalStatus[],
+  flags: ApprovalStatusFlags,
 ): boolean {
   if (!selected.length) return true;
-  const statuses = getLeadStatuses(id, flags);
+  const statuses = getApprovalStatuses(id, flags);
   return statuses.some((s) => selected.includes(s));
 }
 
-export function leadStatusToneClass(status: LeadStatus): string {
+export function approvalStatusToneClass(status: ApprovalStatus): string {
   switch (status) {
     case "approved":
       return "bg-emerald-600 text-white hover:bg-emerald-600";
