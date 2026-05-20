@@ -7,6 +7,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FiltersSidebar } from "./filters-sidebar";
 import { TopBar } from "./top-bar";
 import { useAppStore, type TabKey } from "@/lib/store";
+import { useSyncSelection } from "@/lib/use-sync-selection";
+
+const ApprovalMode = lazy(() =>
+  import("./approval-mode").then((m) => ({ default: m.ApprovalMode })),
+);
 
 // Each tab is its own chunk. We render only the active one so Plotly,
 // SWR fetches, and Plotly-bound React state for the other five tabs stay
@@ -23,6 +28,20 @@ export function AppShell({ userEmail }: { userEmail: string }) {
   const tab = useAppStore((s) => s.activeTab);
   const setTab = useAppStore((s) => s.setActiveTab);
   const hasHydrated = useAppStore((s) => s.hasHydrated);
+  const approvalMode = useAppStore((s) => s.approvalMode);
+
+  useSyncSelection();
+
+  // Approval mode takes over the whole viewport — no filters sidebar, no top
+  // bar, no tabs. Exit returns the user to the previous tab with selection
+  // intact.
+  if (hasHydrated && approvalMode) {
+    return (
+      <Suspense fallback={<div className="h-screen" />}>
+        <ApprovalMode />
+      </Suspense>
+    );
+  }
 
   // The store starts with defaults on every page load; persist replaces them
   // asynchronously after reading localStorage. Rendering the interactive
