@@ -75,11 +75,11 @@ export function SavedFiltersMenu({
         variant="ghost"
         size="sm"
         onClick={() => setSaveOpen(true)}
-        className="h-7 text-xs gap-1 px-2"
+        className="h-7 text-xs gap-1 px-2 flex-1 justify-center border border-border/60"
         title="Save current filters"
       >
         <BookmarkPlus className="h-3.5 w-3.5" />
-        Save
+        Save Filter
       </Button>
 
       <Popover open={listOpen} onOpenChange={setListOpen}>
@@ -88,11 +88,11 @@ export function SavedFiltersMenu({
             <Button
               variant="ghost"
               size="sm"
-              className="h-7 text-xs gap-1 px-2"
+              className="h-7 text-xs gap-1 px-2 flex-1 justify-center border border-border/60"
               title="Load a saved filter"
             >
               <Bookmark className="h-3.5 w-3.5" />
-              Load
+              Load Filter
             </Button>
           }
         />
