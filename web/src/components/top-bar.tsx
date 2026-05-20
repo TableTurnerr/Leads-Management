@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { MapPinned, Settings } from "lucide-react";
+import { Zap, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { RefreshDataButton } from "@/components/refresh-data-button";
 
@@ -24,7 +24,7 @@ export function TopBar({ userEmail }: { userEmail: string }) {
           aria-hidden
           className="grid place-items-center h-7 w-7 rounded-md bg-muted/80 text-foreground/80 ring-1 ring-foreground/10"
         >
-          <MapPinned className="h-4 w-4" />
+          <Zap className="h-4 w-4 text-blue-500" />
         </span>
         <h1 className="text-[15px] font-semibold tracking-tight truncate">
           Leads Management
