@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createAuthClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
 
 export default async function Home() {
-  const supabase = await createClient();
+  const supabase = await createAuthClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
