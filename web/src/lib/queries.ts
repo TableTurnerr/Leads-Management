@@ -1,5 +1,9 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { applyFilters, filtersToRpcArgs } from "./filters";
+﻿import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  applyFilters,
+  filtersToRpcArgs,
+  type ApprovalFlagsPayload,
+} from "./filters";
 import type { Filters, MapPointArrays, Restaurant } from "./types";
 
 // Slim column set — only what the visible table renders, plus id for keys
@@ -27,10 +31,11 @@ export type OverviewStats = {
 export async function fetchOverview(
   supabase: SupabaseClient,
   filters: Filters,
+  approvalFlags?: ApprovalFlagsPayload | null,
 ): Promise<OverviewStats> {
   const { data, error } = await supabase.rpc(
     "restaurants_overview",
-    filtersToRpcArgs(filters),
+    filtersToRpcArgs(filters, approvalFlags),
   );
   if (error) throw error;
   return (data ?? {
@@ -57,10 +62,11 @@ export async function fetchOverview(
 export async function fetchMapPointArrays(
   supabase: SupabaseClient,
   filters: Filters,
+  approvalFlags?: ApprovalFlagsPayload | null,
 ): Promise<MapPointArrays> {
   const { data, error } = await supabase.rpc(
     "restaurants_map_points",
-    filtersToRpcArgs(filters),
+    filtersToRpcArgs(filters, approvalFlags),
   );
   if (error) throw error;
   return (data ?? {
@@ -134,9 +140,10 @@ export async function fetchTopCategories(
   supabase: SupabaseClient,
   filters: Filters,
   topN: number,
+  approvalFlags?: ApprovalFlagsPayload | null,
 ) {
   const { data, error } = await supabase.rpc("restaurants_top_categories", {
-    ...filtersToRpcArgs(filters),
+    ...filtersToRpcArgs(filters, approvalFlags),
     p_limit: topN,
   });
   if (error) throw error;
@@ -171,9 +178,10 @@ export async function fetchColumnValues(
   filters: Filters,
   col: string,
   topN: number,
+  approvalFlags?: ApprovalFlagsPayload | null,
 ) {
   const { data, error } = await supabase.rpc("restaurants_column_stats", {
-    ...filtersToRpcArgs(filters),
+    ...filtersToRpcArgs(filters, approvalFlags),
     p_column: col,
     p_limit: topN,
   });

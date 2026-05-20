@@ -1,4 +1,58 @@
-import type { Filters } from "./types";
+﻿import { ALL_APPROVAL_STATUSES, type Filters, type ApprovalStatus } from "./types";
+
+export type ApprovalFlagsPayload = {
+  statuses: ApprovalStatus[];
+  approvedIds: number[];
+  rejectedIds: number[];
+  skippedIds: number[];
+  downloadedIds: number[];
+  sentToSheetsIds: number[];
+};
+
+// True when the approval-status selection would narrow results given the current
+// per-bucket ID arrays. Returning false here lets callers pass null params and
+// keep the server-side cache fast-path eligible — the default selection
+// (everything except "rejected") is a no-op until the user actually rejects
+// at least one lead.
+export function approvalFlagsNarrowsResults(
+  selected: ApprovalStatus[],
+  flags: Omit<ApprovalFlagsPayload, "statuses">,
+): boolean {
+  if (selected.length === 0) return false;
+  if (selected.length === ALL_APPROVAL_STATUSES.length) return false;
+  for (const s of ALL_APPROVAL_STATUSES) {
+    if (selected.includes(s)) continue;
+    if (s === "pending") return true;
+    if (s === "approved"     && flags.approvedIds.length     > 0) return true;
+    if (s === "rejected"     && flags.rejectedIds.length     > 0) return true;
+    if (s === "skipped"      && flags.skippedIds.length      > 0) return true;
+    if (s === "downloaded"   && flags.downloadedIds.length   > 0) return true;
+    if (s === "sentToSheets" && flags.sentToSheetsIds.length > 0) return true;
+  }
+  return false;
+}
+
+export function approvalFlagsToRpcArgs(payload: ApprovalFlagsPayload | null | undefined) {
+  const empty = {
+    p_approval_statuses:      null,
+    p_approved_ids:       null,
+    p_rejected_ids:       null,
+    p_skipped_ids:        null,
+    p_downloaded_ids:     null,
+    p_sent_to_sheets_ids: null,
+  };
+  if (!payload) return empty;
+  const { statuses } = payload;
+  if (!approvalFlagsNarrowsResults(statuses, payload)) return empty;
+  return {
+    p_approval_statuses:      statuses,
+    p_approved_ids:       payload.approvedIds.length     ? payload.approvedIds     : null,
+    p_rejected_ids:       payload.rejectedIds.length     ? payload.rejectedIds     : null,
+    p_skipped_ids:        payload.skippedIds.length      ? payload.skippedIds      : null,
+    p_downloaded_ids:     payload.downloadedIds.length   ? payload.downloadedIds   : null,
+    p_sent_to_sheets_ids: payload.sentToSheetsIds.length ? payload.sentToSheetsIds : null,
+  };
+}
 
 // Returns a copy of `filters` with every disabled group reset to its default
 // "no-op" value. Downstream code (both RPC args and PostgREST builder) only
@@ -92,10 +146,20 @@ function escapeArrayElem(s: string) {
   return s;
 }
 
-// Translate a Filters object to the named-arg shape the RPCs expect.
-export function filtersToRpcArgs(filters: Filters) {
+// Translate a Filters object to the named-arg shape the RPCs expect. The
+// second arg merges the approval-status RPC params; the filter is gated by
+// Filters.enabled.approvalStatuses so a disabled section drops to null/no-op.
+export function filtersToRpcArgs(
+  filters: Filters,
+  approvalFlags?: ApprovalFlagsPayload | null,
+) {
   const f = resolveFilters(filters);
   const search = f.search.trim();
+  const approvalEnabled = filters.enabled.approvalStatuses;
+  const approvalPayload: ApprovalFlagsPayload | null =
+    approvalEnabled && approvalFlags
+      ? { ...approvalFlags, statuses: filters.approvalStatuses }
+      : null;
   return {
     p_provinces:           f.provinces.length         ? f.provinces         : null,
     p_city:                f.city,
@@ -113,5 +177,6 @@ export function filtersToRpcArgs(filters: Filters) {
     p_score_max:           f.scoreMax,
     p_rating_null_policy:  f.ratingNullPolicy,
     p_search:              search ? search.replace(/[%_]/g, "\\$&") : null,
+    ...approvalFlagsToRpcArgs(approvalPayload),
   };
 }
