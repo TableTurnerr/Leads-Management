@@ -22,27 +22,19 @@ try {
     process.exit(1);
   }
 
-  // Handle normalization to X.Y
+  // Always parse as semver (major.minor.patch); pad missing components with 0.
   let parts = version.split('.').map(Number);
-  if (normalize) {
-    parts = [parts[0] || 1, parts[1] || 0];
-  }
+  while (parts.length < 3) parts.push(0);
+  const [major, minor, patch] = parts;
 
-  const isSemver = !normalize && parts.length === 3;
-
+  let newVersion: string;
   if (bumpType === 'major') {
-    parts[0] += 1;
-    parts[1] = 0;
-    if (isSemver) parts[2] = 0;
+    newVersion = `${major + 1}.0.0`;
   } else if (bumpType === 'patch') {
-    if (isSemver) {
-      parts[2] += 1;
-    } else {
-      parts[1] += 1;
-    }
+    newVersion = `${major}.${minor}.${patch + 1}`;
+  } else {
+    newVersion = version;
   }
-
-  const newVersion = parts.join('.');
   data.version = newVersion;
 
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
