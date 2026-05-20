@@ -2,7 +2,15 @@
 // logging hiccup must never block the action the user just performed.
 
 export type LogActionInput = {
-  action: "csv_download" | "send_to_sheets" | "selection_snapshot";
+  action:
+    | "csv_download"
+    | "send_to_sheets"
+    | "selection_snapshot"
+    | "lead_approved"
+    | "lead_rejected"
+    | "lead_skipped"
+    | "approval_start"
+    | "approval_end";
   source?: string;
   rowCount?: number;
   restaurantIds?: number[];

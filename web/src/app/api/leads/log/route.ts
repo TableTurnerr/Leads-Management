@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
-type LogAction = "csv_download" | "send_to_sheets" | "selection_snapshot";
+type LogAction =
+  | "csv_download"
+  | "send_to_sheets"
+  | "selection_snapshot"
+  | "lead_approved"
+  | "lead_rejected"
+  | "lead_skipped"
+  | "approval_start"
+  | "approval_end";
 
 type Body = {
   action: LogAction;
@@ -16,6 +24,11 @@ const ALLOWED: LogAction[] = [
   "csv_download",
   "send_to_sheets",
   "selection_snapshot",
+  "lead_approved",
+  "lead_rejected",
+  "lead_skipped",
+  "approval_start",
+  "approval_end",
 ];
 
 // Cap the id array we persist so a runaway selection can't bloat the row.
