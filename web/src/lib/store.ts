@@ -12,6 +12,7 @@ import {
   DEFAULT_APPROVAL_STATUSES,
   type FilterEnabled,
   type Filters,
+  type ApprovalStatus,
 } from "./types";
 import { loadSelectedIds, saveSelectedIds } from "./selected-ids-storage";
 
@@ -100,6 +101,13 @@ type AppState = {
   markDownloaded: (ids: number[]) => void;
   markSentToSheets: (ids: number[]) => void;
   clearApprovalStatuses: () => void;
+  seedApprovalStatuses: (seed: {
+    approvedIds: number[];
+    rejectedIds: number[];
+    skippedIds: number[];
+    downloadedIds: number[];
+    sentToSheetsIds: number[];
+  }) => void;
 
   showAllSelected: boolean;
   setShowAllSelected: (v: boolean) => void;
@@ -107,6 +115,19 @@ type AppState = {
   hasHydrated: boolean;
   setHasHydrated: (v: boolean) => void;
 };
+
+function unionIds(a: number[], b: number[]): number[] {
+  if (b.length === 0) return a;
+  const seen = new Set(a);
+  let changed = false;
+  for (const id of b) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      changed = true;
+    }
+  }
+  return changed ? [...seen] : a;
+}
 
 // localStorage is undefined during SSR. Hand persist a no-op shim there so
 // the store creator doesn't throw when this module is evaluated on the
@@ -235,6 +256,14 @@ export const useAppStore = create<AppState>()(
           downloadedIds: [],
           sentToSheetsIds: [],
         }),
+      seedApprovalStatuses: (seed) =>
+        set((s) => ({
+          approvedIds:     unionIds(s.approvedIds,     seed.approvedIds),
+          rejectedIds:     unionIds(s.rejectedIds,     seed.rejectedIds),
+          skippedIds:      unionIds(s.skippedIds,      seed.skippedIds),
+          downloadedIds:   unionIds(s.downloadedIds,   seed.downloadedIds),
+          sentToSheetsIds: unionIds(s.sentToSheetsIds, seed.sentToSheetsIds),
+        })),
 
       showAllSelected: false,
       setShowAllSelected: (v) => set({ showAllSelected: v }),
@@ -244,7 +273,7 @@ export const useAppStore = create<AppState>()(
     }),
     {
       name: "tt-app-state-v1",
-      version: 9,
+      version: 10,
       storage: createJSONStorage(safeStorage),
       migrate: (persisted, version) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -305,6 +334,28 @@ export const useAppStore = create<AppState>()(
             delete s.filters.enabled.leadStatuses;
           }
         }
+        // v9 → v10: approvalStatuses split into includeApprovalStatuses /
+        // excludeApprovalStatuses. The old field was an include-only list; the
+        // new default is include=[] (all), exclude=["rejected"].
+        if (version < 10 && s?.filters) {
+          if (Array.isArray(s.filters.approvalStatuses)) {
+            const old = s.filters.approvalStatuses as ApprovalStatus[];
+            const wasDefault =
+              old.length === DEFAULT_APPROVAL_STATUSES.length &&
+              DEFAULT_APPROVAL_STATUSES.every((x) => old.includes(x));
+            if (wasDefault || old.length === 0) {
+              s.filters.includeApprovalStatuses = [];
+              s.filters.excludeApprovalStatuses = ["rejected"];
+            } else {
+              s.filters.includeApprovalStatuses = old;
+              s.filters.excludeApprovalStatuses = [];
+            }
+            delete s.filters.approvalStatuses;
+          } else if (!Array.isArray(s.filters.includeApprovalStatuses)) {
+            s.filters.includeApprovalStatuses = [];
+            s.filters.excludeApprovalStatuses = ["rejected"];
+          }
+        }
         return s;
       },
       // Only the user-visible slice is persisted. Setter identities, the
@@ -344,8 +395,11 @@ export const useAppStore = create<AppState>()(
             ...(state.filters?.enabled ?? {}),
           },
         };
-        if (!Array.isArray(state.filters.approvalStatuses)) {
-          state.filters.approvalStatuses = [...DEFAULT_APPROVAL_STATUSES];
+        if (!Array.isArray(state.filters.includeApprovalStatuses)) {
+          state.filters.includeApprovalStatuses = [];
+        }
+        if (!Array.isArray(state.filters.excludeApprovalStatuses)) {
+          state.filters.excludeApprovalStatuses = ["rejected"];
         }
         if (typeof window !== "undefined") {
           const fromCompact = loadSelectedIds();
