@@ -108,12 +108,17 @@ export async function POST(request: Request) {
         );
       case "list":
         return jsonResponse(
-          await fetchList(supabase, body.filters, {
-            sortCol: body.sortCol,
-            asc: body.asc,
-            page: body.page,
-            pageSize: body.pageSize,
-          }),
+          await fetchList(
+            supabase,
+            body.filters,
+            {
+              sortCol: body.sortCol,
+              asc: body.asc,
+              page: body.page,
+              pageSize: body.pageSize,
+            },
+            body.approvalFlags,
+          ),
           acceptEncoding,
         );
       case "category_stats":

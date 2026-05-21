@@ -101,18 +101,30 @@ export async function fetchList(
     page: number;
     pageSize: number;
   },
+  approvalFlags?: ApprovalFlagsPayload | null,
 ): Promise<{ rows: Restaurant[]; total: number }> {
   const from = (opts.page - 1) * opts.pageSize;
   const to = from + opts.pageSize - 1;
-  // count=estimated avoids a full sequential count on every page change;
-  // PostgREST returns the planner's estimate.
+  // Approval-status narrowing relies on per-bucket ID arrays held client-side,
+  // so it has to be expressed in the PostgREST query (the other filter groups
+  // could stay in SQL, but consolidating here keeps fetchList honest about
+  // what's actually being applied). count=exact (over estimated) is needed
+  // because the .not.in / .in predicates the approval filter emits aren't
+  // accurately reflected in the planner's stats — an estimated count would
+  // disagree with the actual rows.
+  const useExact = !!(
+    filters.enabled.approvalStatuses
+    && approvalFlags
+    && (approvalFlags.includeStatuses.length > 0 || approvalFlags.excludeStatuses.length > 0)
+  );
   const q = applyFilters(
     supabase
       .from("restaurants")
-      .select(LIST_COLS, { count: "estimated" })
+      .select(LIST_COLS, { count: useExact ? "exact" : "estimated" })
       .order(opts.sortCol, { ascending: opts.asc, nullsFirst: false })
       .range(from, to),
     filters,
+    approvalFlags,
   );
   const { data, count, error } = await q;
   if (error) throw error;
