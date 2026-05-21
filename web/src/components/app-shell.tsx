@@ -8,6 +8,7 @@ import { FiltersSidebar } from "./filters-sidebar";
 import { TopBar } from "./top-bar";
 import { useAppStore, type TabKey } from "@/lib/store";
 import { useSyncSelection } from "@/lib/use-sync-selection";
+import { useSyncApprovalHistory } from "@/lib/use-sync-approval-history";
 
 const ApprovalMode = lazy(() =>
   import("./approval-mode").then((m) => ({ default: m.ApprovalMode })),
@@ -31,6 +32,7 @@ export function AppShell({ userEmail }: { userEmail: string }) {
   const approvalMode = useAppStore((s) => s.approvalMode);
 
   useSyncSelection();
+  useSyncApprovalHistory();
 
   // Approval mode takes over the whole viewport — no filters sidebar, no top
   // bar, no tabs. Exit returns the user to the previous tab with selection
@@ -50,11 +52,11 @@ export function AppShell({ userEmail }: { userEmail: string }) {
   // latch onto the defaults. Render a quiet shell until hydration finishes.
   if (!hasHydrated) {
     return (
-      <div className="flex min-h-screen">
+      <div className="flex h-screen overflow-hidden">
         <aside className="w-80 shrink-0 border-r border-border bg-card/40" />
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
           <TopBar userEmail={userEmail} />
-          <main className="flex-1 p-6 overflow-x-hidden">
+          <main className="flex-1 p-6 overflow-y-auto overflow-x-hidden">
             <TabLoading />
           </main>
         </div>
@@ -63,11 +65,11 @@ export function AppShell({ userEmail }: { userEmail: string }) {
   }
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       <FiltersSidebar />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <TopBar userEmail={userEmail} />
-        <main className="flex-1 p-6 overflow-x-hidden">
+        <main className="flex-1 p-6 overflow-y-auto overflow-x-hidden">
           <Tabs value={tab} onValueChange={(v) => setTab(v as TabKey)} className="w-full">
             <TabsList className="mb-5 h-9 p-1 bg-muted/60 ring-1 ring-foreground/5">
               <TabsTrigger value="overview" className="px-3 data-active:font-semibold">Overview</TabsTrigger>
