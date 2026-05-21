@@ -56,7 +56,8 @@ export function SelectedTab() {
   const selectedIds = useAppStore((s) => s.selectedIds);
   const clearSelection = useAppStore((s) => s.clearSelection);
   const startApproval = useAppStore((s) => s.startApproval);
-  const approvalStatuses = useAppStore((s) => s.filters.approvalStatuses);
+  const includeApprovalStatuses = useAppStore((s) => s.filters.includeApprovalStatuses);
+  const excludeApprovalStatuses = useAppStore((s) => s.filters.excludeApprovalStatuses);
   const approvalStatusesEnabled = useAppStore((s) => s.filters.enabled.approvalStatuses);
   const approvedIds = useAppStore((s) => s.approvedIds);
   const rejectedIds = useAppStore((s) => s.rejectedIds);
@@ -87,9 +88,12 @@ export function SelectedTab() {
 
   const allRows = useMemo(() => data?.rows ?? [], [data]);
   const filteredRows = useMemo(() => {
-    if (!approvalStatusesEnabled || approvalStatuses.length === 0) return allRows;
-    return allRows.filter((r) => rowMatchesApprovalStatuses(r.id, approvalStatuses, flags));
-  }, [allRows, approvalStatuses, approvalStatusesEnabled, flags]);
+    if (!approvalStatusesEnabled) return allRows;
+    if (includeApprovalStatuses.length === 0 && excludeApprovalStatuses.length === 0) return allRows;
+    return allRows.filter((r) =>
+      rowMatchesApprovalStatuses(r.id, includeApprovalStatuses, excludeApprovalStatuses, flags),
+    );
+  }, [allRows, includeApprovalStatuses, excludeApprovalStatuses, approvalStatusesEnabled, flags]);
   const rows = showAllSelected ? allRows : filteredRows;
   const hiddenByFilters = allRows.length > 0 && filteredRows.length === 0 && !showAllSelected;
 

@@ -73,7 +73,8 @@ export function DataTableTab() {
   const setSortCol = useAppStore((s) => s.setTableSortCol);
   const setAsc = useAppStore((s) => s.setTableAsc);
   const setPage = useAppStore((s) => s.setTablePage);
-  const approvalStatuses = useAppStore((s) => s.filters.approvalStatuses);
+  const includeApprovalStatuses = useAppStore((s) => s.filters.includeApprovalStatuses);
+  const excludeApprovalStatuses = useAppStore((s) => s.filters.excludeApprovalStatuses);
   const approvalStatusesEnabled = useAppStore((s) => s.filters.enabled.approvalStatuses);
   const approvedIds = useAppStore((s) => s.approvedIds);
   const rejectedIds = useAppStore((s) => s.rejectedIds);
@@ -85,8 +86,9 @@ export function DataTableTab() {
     [approvedIds, rejectedIds, skippedIds, downloadedIds, sentToSheetsIds],
   );
 
+  const approvalFlags = useApprovalFlags();
   const { data, isLoading } = useSWR<{ rows: Restaurant[]; total: number }>(
-    ["list", filters, sortCol, asc, page],
+    ["list", filters, sortCol, asc, page, approvalFlags],
     () =>
       postQuery({
         type: "list",
@@ -95,6 +97,7 @@ export function DataTableTab() {
         asc,
         page,
         pageSize: PAGE_SIZE,
+        approvalFlags,
       }),
     { revalidateOnFocus: false, keepPreviousData: true },
   );
@@ -106,9 +109,12 @@ export function DataTableTab() {
   // narrows the visible page after the server query. Page totals still
   // reflect the unfiltered server result.
   const rows = useMemo(() => {
-    if (!approvalStatusesEnabled || approvalStatuses.length === 0) return allRows;
-    return allRows.filter((r) => rowMatchesApprovalStatuses(r.id, approvalStatuses, flags));
-  }, [allRows, approvalStatuses, approvalStatusesEnabled, flags]);
+    if (!approvalStatusesEnabled) return allRows;
+    if (includeApprovalStatuses.length === 0 && excludeApprovalStatuses.length === 0) return allRows;
+    return allRows.filter((r) =>
+      rowMatchesApprovalStatuses(r.id, includeApprovalStatuses, excludeApprovalStatuses, flags),
+    );
+  }, [allRows, includeApprovalStatuses, excludeApprovalStatuses, approvalStatusesEnabled, flags]);
   const initialLoading = isLoading && !data;
 
   if (initialLoading) {
