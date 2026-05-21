@@ -1,7 +1,8 @@
 ﻿import { ALL_APPROVAL_STATUSES, type Filters, type ApprovalStatus } from "./types";
 
 export type ApprovalFlagsPayload = {
-  statuses: ApprovalStatus[];
+  includeStatuses: ApprovalStatus[];
+  excludeStatuses: ApprovalStatus[];
   approvedIds: number[];
   rejectedIds: number[];
   skippedIds: number[];
@@ -9,19 +10,17 @@ export type ApprovalFlagsPayload = {
   sentToSheetsIds: number[];
 };
 
-// True when the approval-status selection would narrow results given the current
-// per-bucket ID arrays. Returning false here lets callers pass null params and
-// keep the server-side cache fast-path eligible — the default selection
-// (everything except "rejected") is a no-op until the user actually rejects
-// at least one lead.
-export function approvalFlagsNarrowsResults(
-  selected: ApprovalStatus[],
-  flags: Omit<ApprovalFlagsPayload, "statuses">,
+type FlagBuckets = Omit<ApprovalFlagsPayload, "includeStatuses" | "excludeStatuses">;
+
+// True when the given status list would actually drop any row given the
+// current per-bucket ID arrays. "pending" always counts (we cannot bound the
+// pending population without scanning), the rest only count if their ID array
+// is non-empty.
+function statusListIsNonEmpty(
+  statuses: ApprovalStatus[],
+  flags: FlagBuckets,
 ): boolean {
-  if (selected.length === 0) return false;
-  if (selected.length === ALL_APPROVAL_STATUSES.length) return false;
-  for (const s of ALL_APPROVAL_STATUSES) {
-    if (selected.includes(s)) continue;
+  for (const s of statuses) {
     if (s === "pending") return true;
     if (s === "approved"     && flags.approvedIds.length     > 0) return true;
     if (s === "rejected"     && flags.rejectedIds.length     > 0) return true;
@@ -32,25 +31,54 @@ export function approvalFlagsNarrowsResults(
   return false;
 }
 
+// Whether the include side narrows results. An include set covering every
+// known status is a no-op; otherwise we narrow when at least one of the
+// statuses NOT in the include set has rows.
+export function includeNarrowsResults(
+  include: ApprovalStatus[],
+  flags: FlagBuckets,
+): boolean {
+  if (include.length === 0) return false;
+  if (include.length === ALL_APPROVAL_STATUSES.length) return false;
+  const missing = ALL_APPROVAL_STATUSES.filter((s) => !include.includes(s));
+  return statusListIsNonEmpty(missing, flags);
+}
+
+// Whether the exclude side narrows results. The default ["rejected"] is a
+// no-op until the user actually rejects at least one lead, which lets the
+// server-side cache fast-path stay eligible in the common case.
+export function excludeNarrowsResults(
+  exclude: ApprovalStatus[],
+  flags: FlagBuckets,
+): boolean {
+  if (exclude.length === 0) return false;
+  return statusListIsNonEmpty(exclude, flags);
+}
+
 export function approvalFlagsToRpcArgs(payload: ApprovalFlagsPayload | null | undefined) {
   const empty = {
-    p_approval_statuses:      null,
+    p_approval_statuses:  null,
     p_approved_ids:       null,
     p_rejected_ids:       null,
     p_skipped_ids:        null,
     p_downloaded_ids:     null,
     p_sent_to_sheets_ids: null,
+    p_excluded_statuses:  null,
   };
   if (!payload) return empty;
-  const { statuses } = payload;
-  if (!approvalFlagsNarrowsResults(statuses, payload)) return empty;
+  const includeNarrows = includeNarrowsResults(payload.includeStatuses, payload);
+  const excludeNarrows = excludeNarrowsResults(payload.excludeStatuses, payload);
+  if (!includeNarrows && !excludeNarrows) return empty;
+  // Both sides reference the same per-status ID arrays in SQL, so we send
+  // them unconditionally whenever either side narrows.
   return {
-    p_approval_statuses:      statuses,
+    p_approval_statuses:  includeNarrows ? payload.includeStatuses : null,
     p_approved_ids:       payload.approvedIds.length     ? payload.approvedIds     : null,
     p_rejected_ids:       payload.rejectedIds.length     ? payload.rejectedIds     : null,
     p_skipped_ids:        payload.skippedIds.length      ? payload.skippedIds      : null,
     p_downloaded_ids:     payload.downloadedIds.length   ? payload.downloadedIds   : null,
     p_sent_to_sheets_ids: payload.sentToSheetsIds.length ? payload.sentToSheetsIds : null,
+    p_excluded_statuses:  excludeNarrows ? payload.excludeStatuses : null,
   };
 }
 
@@ -80,9 +108,43 @@ export function resolveFilters(filters: Filters): Filters {
   };
 }
 
-// Note: only used by the table list-page query path. The map and overview go
-// through filtersToRpcArgs so the SQL stays in one place.
-export function applyFilters<T>(query: T, filters: Filters): T {
+// Collect every restaurant id whose status set intersects `statuses`. The
+// per-bucket ID arrays come from the client (markApproved / markDownloaded
+// etc.) so this is the only ground truth the table-list path has for who
+// got which status.
+function idsMatchingStatuses(
+  statuses: ApprovalStatus[],
+  flags: ApprovalFlagsPayload,
+): number[] {
+  const set = new Set<number>();
+  if (statuses.includes("approved"))     for (const id of flags.approvedIds)     set.add(id);
+  if (statuses.includes("rejected"))     for (const id of flags.rejectedIds)     set.add(id);
+  if (statuses.includes("skipped"))      for (const id of flags.skippedIds)      set.add(id);
+  if (statuses.includes("downloaded"))   for (const id of flags.downloadedIds)   set.add(id);
+  if (statuses.includes("sentToSheets")) for (const id of flags.sentToSheetsIds) set.add(id);
+  return [...set];
+}
+
+// Pending = no primary status on file (not approved / rejected / skipped).
+// Returning the union of every primary bucket lets callers express pending
+// via "id not in (primaries)".
+function primaryStatusIds(flags: ApprovalFlagsPayload): number[] {
+  const set = new Set<number>();
+  for (const id of flags.approvedIds) set.add(id);
+  for (const id of flags.rejectedIds) set.add(id);
+  for (const id of flags.skippedIds)  set.add(id);
+  return [...set];
+}
+
+// Note: used by the table list-page query path. The map and overview go
+// through filtersToRpcArgs so most filter logic lives in SQL; approval
+// status is the exception — it relies on per-bucket ID arrays that only
+// the client has, so we wire it in here as well.
+export function applyFilters<T>(
+  query: T,
+  filters: Filters,
+  approvalFlags?: ApprovalFlagsPayload | null,
+): T {
   const f = resolveFilters(filters);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let q = query as any;
@@ -134,6 +196,63 @@ export function applyFilters<T>(query: T, filters: Filters): T {
     q = q.ilike("name", `%${s}%`);
   }
 
+  if (filters.enabled.approvalStatuses && approvalFlags) {
+    const inc = approvalFlags.includeStatuses;
+    const exc = approvalFlags.excludeStatuses;
+
+    // Exclude side: drop rows whose status set intersects `exc`. "Pending"
+    // is special — there's no bucket of pending IDs, only the absence of a
+    // primary status, so we encode "not pending" as "must be in some
+    // primary bucket".
+    if (exc.length > 0) {
+      const ids = idsMatchingStatuses(exc, approvalFlags);
+      if (ids.length > 0) {
+        q = q.not("id", "in", `(${ids.join(",")})`);
+      }
+      if (exc.includes("pending")) {
+        const primary = primaryStatusIds(approvalFlags);
+        if (primary.length === 0) {
+          // Every row is pending → excluding pending wipes the result set.
+          q = q.eq("id", -1);
+        } else {
+          q = q.in("id", primary);
+        }
+      }
+    }
+
+    // Include side: keep only rows that match at least one of `inc`. When
+    // pending is present we OR "row has a non-primary status" with "row is
+    // in some primary bucket". When pending is the only include we negate
+    // the primary set; when pending is absent we restrict to the explicit
+    // include IDs.
+    if (inc.length > 0) {
+      if (inc.includes("pending")) {
+        const explicit = idsMatchingStatuses(
+          inc.filter((s) => s !== "pending"),
+          approvalFlags,
+        );
+        const primary = primaryStatusIds(approvalFlags);
+        if (primary.length === 0) {
+          // Everything is pending, so "pending OR …" is a no-op.
+        } else if (explicit.length === 0) {
+          q = q.not("id", "in", `(${primary.join(",")})`);
+        } else {
+          q = q.or(
+            `id.in.(${explicit.join(",")}),id.not.in.(${primary.join(",")})`,
+          );
+        }
+      } else {
+        const ids = idsMatchingStatuses(inc, approvalFlags);
+        if (ids.length === 0) {
+          // None of the requested statuses have any rows — nothing matches.
+          q = q.eq("id", -1);
+        } else {
+          q = q.in("id", ids);
+        }
+      }
+    }
+  }
+
   return q as T;
 }
 
@@ -158,7 +277,11 @@ export function filtersToRpcArgs(
   const approvalEnabled = filters.enabled.approvalStatuses;
   const approvalPayload: ApprovalFlagsPayload | null =
     approvalEnabled && approvalFlags
-      ? { ...approvalFlags, statuses: filters.approvalStatuses }
+      ? {
+          ...approvalFlags,
+          includeStatuses: filters.includeApprovalStatuses,
+          excludeStatuses: filters.excludeApprovalStatuses,
+        }
       : null;
   return {
     p_provinces:           f.provinces.length         ? f.provinces         : null,

@@ -1,8 +1,10 @@
-﻿import { DEFAULT_APPROVAL_STATUSES, type ApprovalStatus } from "./types";
+﻿import { type ApprovalStatus } from "./types";
 
-export function isDefaultApprovalStatuses(selected: ApprovalStatus[]): boolean {
-  if (selected.length !== DEFAULT_APPROVAL_STATUSES.length) return false;
-  return DEFAULT_APPROVAL_STATUSES.every((s) => selected.includes(s));
+export function isDefaultApprovalStatusFilters(
+  include: ApprovalStatus[],
+  exclude: ApprovalStatus[],
+): boolean {
+  return include.length === 0 && exclude.length === 1 && exclude[0] === "rejected";
 }
 
 export type ApprovalStatusFlags = Readonly<{
@@ -26,12 +28,14 @@ export function getApprovalStatuses(id: number, flags: ApprovalStatusFlags): App
 
 export function rowMatchesApprovalStatuses(
   id: number,
-  selected: ApprovalStatus[],
+  include: ApprovalStatus[],
+  exclude: ApprovalStatus[],
   flags: ApprovalStatusFlags,
 ): boolean {
-  if (!selected.length) return true;
   const statuses = getApprovalStatuses(id, flags);
-  return statuses.some((s) => selected.includes(s));
+  if (include.length > 0 && !statuses.some((s) => include.includes(s))) return false;
+  if (exclude.length > 0 && statuses.some((s) => exclude.includes(s))) return false;
+  return true;
 }
 
 export function approvalStatusToneClass(status: ApprovalStatus): string {

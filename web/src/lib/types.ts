@@ -103,7 +103,8 @@ export type Filters = {
   hasAddress: boolean | null;
   hasCoordinates: boolean | null;
   search: string;
-  approvalStatuses: ApprovalStatus[];
+  includeApprovalStatuses: ApprovalStatus[];
+  excludeApprovalStatuses: ApprovalStatus[];
   enabled: FilterEnabled;
 };
 
@@ -149,6 +150,7 @@ export const DEFAULT_FILTERS: Filters = {
   hasAddress: null,
   hasCoordinates: null,
   search: "",
-  approvalStatuses: DEFAULT_APPROVAL_STATUSES,
+  includeApprovalStatuses: [],
+  excludeApprovalStatuses: ["rejected"],
   enabled: DEFAULT_ENABLED,
 };

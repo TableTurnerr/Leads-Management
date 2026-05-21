@@ -4,9 +4,9 @@ import { useMemo } from "react";
 import { useAppStore } from "./store";
 import type { ApprovalFlagsPayload } from "./filters";
 
-// Bundle the approval-status bucket arrays from the store into the payload shape
-// the RPCs expect. `statuses` is filled in by filtersToRpcArgs from
-// Filters.approvalStatuses — callers don't need to thread it through themselves.
+// Bundle the approval-status bucket arrays from the store into the payload
+// shape the RPCs expect. include/exclude are filled in by filtersToRpcArgs
+// from the live filter set, so callers don't have to thread them through.
 export function useApprovalFlags(): ApprovalFlagsPayload {
   const approvedIds     = useAppStore((s) => s.approvedIds);
   const rejectedIds     = useAppStore((s) => s.rejectedIds);
@@ -15,7 +15,8 @@ export function useApprovalFlags(): ApprovalFlagsPayload {
   const sentToSheetsIds = useAppStore((s) => s.sentToSheetsIds);
   return useMemo<ApprovalFlagsPayload>(
     () => ({
-      statuses: [],
+      includeStatuses: [],
+      excludeStatuses: [],
       approvedIds,
       rejectedIds,
       skippedIds,
