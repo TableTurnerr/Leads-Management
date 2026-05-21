@@ -33,7 +33,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { isDefaultApprovalStatuses } from "@/lib/approval-status";
+import { isDefaultApprovalStatusFilters } from "@/lib/approval-status";
 import { SavedFiltersMenu } from "@/components/saved-filters-menu";
 import { postQuery } from "@/lib/fetcher";
 import { useApprovalFlags } from "@/lib/use-approval-flags";
@@ -55,6 +55,23 @@ type Facets = {
 };
 
 const PRICE_OPTIONS = ["$", "$$", "$$$", "$$$$", "Unknown"];
+
+const US_STATE_NAMES: Record<string, string> = {
+  AL: "Alabama", AK: "Alaska", AZ: "Arizona", AR: "Arkansas", CA: "California",
+  CO: "Colorado", CT: "Connecticut", DE: "Delaware", FL: "Florida", GA: "Georgia",
+  HI: "Hawaii", ID: "Idaho", IL: "Illinois", IN: "Indiana", IA: "Iowa",
+  KS: "Kansas", KY: "Kentucky", LA: "Louisiana", ME: "Maine", MD: "Maryland",
+  MA: "Massachusetts", MI: "Michigan", MN: "Minnesota", MS: "Mississippi",
+  MO: "Missouri", MT: "Montana", NE: "Nebraska", NV: "Nevada", NH: "New Hampshire",
+  NJ: "New Jersey", NM: "New Mexico", NY: "New York", NC: "North Carolina",
+  ND: "North Dakota", OH: "Ohio", OK: "Oklahoma", OR: "Oregon", PA: "Pennsylvania",
+  RI: "Rhode Island", SC: "South Carolina", SD: "South Dakota", TN: "Tennessee",
+  TX: "Texas", UT: "Utah", VT: "Vermont", VA: "Virginia", WA: "Washington",
+  WV: "West Virginia", WI: "Wisconsin", WY: "Wyoming", DC: "Washington D.C.",
+  AB: "Alberta", BC: "British Columbia", MB: "Manitoba", NB: "New Brunswick",
+  NL: "Newfoundland", NS: "Nova Scotia", ON: "Ontario", PE: "Prince Edward Island",
+  QC: "Quebec", SK: "Saskatchewan",
+};
 
 // At most two sections stay expanded at a time so the sidebar stays
 // scannable — opening a third bumps the oldest. Order in the queue is
@@ -306,6 +323,7 @@ export function FiltersSidebar() {
                 disabled={!filters.enabled.provinces}
                 searchPlaceholder="Filter states…"
                 maxHeight={220}
+                stateNames={US_STATE_NAMES}
               />
             </div>
 
@@ -545,15 +563,30 @@ export function FiltersSidebar() {
           enabled={filters.enabled.approvalStatuses}
           onEnabledChange={(v) => setEnabled("approvalStatuses", v)}
           active={
-            filters.approvalStatuses.length > 0 &&
-            !isDefaultApprovalStatuses(filters.approvalStatuses)
+            !isDefaultApprovalStatusFilters(
+              filters.includeApprovalStatuses,
+              filters.excludeApprovalStatuses,
+            )
           }
         >
-          <ApprovalStatusPicker
-            selected={filters.approvalStatuses}
-            onChange={(next) => setFilter("approvalStatuses", next)}
-            disabled={!filters.enabled.approvalStatuses}
-          />
+          <div className="grid gap-3">
+            <ApprovalStatusPickerRow
+              label="Include any of"
+              accent="success"
+              selected={filters.includeApprovalStatuses}
+              other={filters.excludeApprovalStatuses}
+              disabled={!filters.enabled.approvalStatuses}
+              onChange={(next) => setFilter("includeApprovalStatuses", next)}
+            />
+            <ApprovalStatusPickerRow
+              label="Exclude any of"
+              accent="danger"
+              selected={filters.excludeApprovalStatuses}
+              other={filters.includeApprovalStatuses}
+              disabled={!filters.enabled.approvalStatuses}
+              onChange={(next) => setFilter("excludeApprovalStatuses", next)}
+            />
+          </div>
         </Section>
 
         <Section
@@ -828,6 +861,7 @@ function CheckboxList({
   disabled,
   searchPlaceholder,
   maxHeight = 200,
+  stateNames,
 }: {
   values: string[];
   selected: string[];
@@ -835,22 +869,51 @@ function CheckboxList({
   disabled?: boolean;
   searchPlaceholder?: string;
   maxHeight?: number;
+  stateNames?: Record<string, string>;
 }) {
   const [q, setQ] = useState("");
   const filtered = useMemo(() => {
     if (!q.trim()) return values;
     const needle = q.toLowerCase();
-    return values.filter((v) => v.toLowerCase().includes(needle));
-  }, [values, q]);
+    return values.filter((v) => {
+      if (v.toLowerCase().includes(needle)) return true;
+      if (stateNames) {
+        const full = stateNames[v]?.toLowerCase() ?? "";
+        return full.includes(needle);
+      }
+      return false;
+    });
+  }, [values, q, stateNames]);
   return (
     <div className="rounded-md border border-border bg-card/30">
-      <Input
-        placeholder={searchPlaceholder}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        disabled={disabled}
-        className="h-7 text-xs border-0 border-b border-border rounded-none focus-visible:ring-0"
-      />
+      <div className="relative">
+        <Input
+          placeholder={searchPlaceholder}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          disabled={disabled}
+          className="h-7 text-xs border-0 border-b border-border rounded-none focus-visible:ring-0"
+        />
+      </div>
+      {stateNames && selected.length > 0 && (
+        <div className="flex flex-wrap gap-1 px-2 py-1 border-b border-border">
+          {selected.map((abbr) => (
+            <span
+              key={abbr}
+              className="inline-flex items-center gap-0.5 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+            >
+              {abbr}
+              <button
+                onClick={() => !disabled && onToggle(abbr)}
+                disabled={disabled}
+                className="ml-0.5 opacity-60 hover:opacity-100 disabled:cursor-not-allowed"
+              >
+                <X className="h-2.5 w-2.5" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
       <div
         className="overflow-y-auto py-1 scrollbar-custom"
         style={{ maxHeight }}
@@ -862,6 +925,7 @@ function CheckboxList({
         )}
         {filtered.map((v) => {
           const checked = selected.includes(v);
+          const label = stateNames ? (stateNames[v] ?? v) : v;
           return (
             <button
               key={v}
@@ -878,7 +942,10 @@ function CheckboxList({
                 tabIndex={-1}
                 className="pointer-events-none"
               />
-              <span className="truncate">{v}</span>
+              <span className="truncate">{label}</span>
+              {stateNames && (
+                <span className="ml-auto text-[10px] text-muted-foreground shrink-0">{v}</span>
+              )}
             </button>
           );
         })}
@@ -1060,44 +1127,62 @@ function countApplied(f: Filters): number {
   if (e.hasWebsite        && f.hasWebsite != null)               n++;
   if (e.hasAddress        && f.hasAddress != null)               n++;
   if (e.hasCoordinates    && f.hasCoordinates != null)           n++;
-  if (e.approvalStatuses && f.approvalStatuses.length && !isDefaultApprovalStatuses(f.approvalStatuses)) n++;
+  if (e.approvalStatuses && !isDefaultApprovalStatusFilters(f.includeApprovalStatuses, f.excludeApprovalStatuses)) n++;
   return n;
 }
 
-function ApprovalStatusPicker({
+function ApprovalStatusPickerRow({
+  label,
+  accent,
   selected,
+  other,
   onChange,
   disabled,
 }: {
+  label: string;
+  accent: "success" | "danger";
   selected: ApprovalStatus[];
+  other: ApprovalStatus[];
   onChange: (next: ApprovalStatus[]) => void;
   disabled?: boolean;
 }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {ALL_APPROVAL_STATUSES.map((s) => {
-        const checked = selected.includes(s);
-        return (
-          <button
-            key={s}
-            onClick={() => {
-              onChange(
-                checked ? selected.filter((x) => x !== s) : [...selected, s],
-              );
-            }}
-            disabled={disabled}
-            className={cn(
-              "px-2.5 py-1 rounded-md border text-xs font-medium transition-colors",
-              "disabled:opacity-50 disabled:cursor-not-allowed",
-              checked
-                ? "bg-primary text-primary-foreground border-primary"
-                : "border-border bg-card/30 hover:bg-card/60",
-            )}
-          >
-            {APPROVAL_STATUS_LABELS[s]}
-          </button>
-        );
-      })}
+    <div className="grid gap-1.5">
+      <span
+        className={cn(
+          "text-xs font-medium",
+          accent === "success" ? "text-emerald-600 dark:text-emerald-500" : "text-red-500",
+        )}
+      >
+        {label}
+      </span>
+      <div className="flex flex-wrap gap-1.5">
+        {ALL_APPROVAL_STATUSES.map((s) => {
+          const checked = selected.includes(s);
+          const blocked = other.includes(s);
+          return (
+            <button
+              key={s}
+              onClick={() => {
+                if (blocked) return;
+                onChange(checked ? selected.filter((x) => x !== s) : [...selected, s]);
+              }}
+              disabled={disabled || blocked}
+              className={cn(
+                "px-2.5 py-1 rounded-md border text-xs font-medium transition-colors",
+                "disabled:opacity-50 disabled:cursor-not-allowed",
+                checked
+                  ? accent === "success"
+                    ? "bg-emerald-600 text-white border-emerald-600"
+                    : "bg-red-600 text-white border-red-600"
+                  : "border-border bg-card/30 hover:bg-card/60",
+              )}
+            >
+              {APPROVAL_STATUS_LABELS[s]}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }
