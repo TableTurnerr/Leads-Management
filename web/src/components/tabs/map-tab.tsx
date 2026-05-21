@@ -118,7 +118,7 @@ export function MapTab() {
   const [liveZoom, setLiveZoom] = useState(() => initialMapView.zoom);
 
   const approvalFlags = useApprovalFlags();
-  const { data, isLoading } = useSWR<MapPointArrays>(
+  const { data, isLoading, isValidating } = useSWR<MapPointArrays>(
     ["map", filters, approvalFlags],
     () => postQuery<MapPointArrays>({ type: "map", filters, approvalFlags }),
     { revalidateOnFocus: false, keepPreviousData: true, dedupingInterval: 5000 },
@@ -561,7 +561,7 @@ export function MapTab() {
           onClick={onClick}
           onRelayout={onRelayout}
         />
-        {isLoading && (
+        {(isLoading || isValidating) && (
           <ScanOverlay
             plotDivRef={plotDivRef}
             center={initialMapView.center}

@@ -21,7 +21,7 @@ const PLOT_BG = {
 export function OverviewTab() {
   const filters = useAppStore((s) => s.filters);
   const approvalFlags = useApprovalFlags();
-  const { data } = useSWR<OverviewStats>(
+  const { data, isValidating } = useSWR<OverviewStats>(
     ["overview", filters, approvalFlags],
     () =>
       postQuery<OverviewStats>({ type: "overview", filters, approvalFlags }),
@@ -36,16 +36,18 @@ export function OverviewTab() {
   return (
     <div className="space-y-6">
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-        <MetricCard value={data.total.toLocaleString()} label="Restaurants" />
-        <MetricCard value={data.provinces.toLocaleString()} label="States" />
-        <MetricCard value={data.cities.toLocaleString()} label="Cities" />
+        <MetricCard value={data.total.toLocaleString()} label="Restaurants" loading={isValidating} />
+        <MetricCard value={data.provinces.toLocaleString()} label="States" loading={isValidating} />
+        <MetricCard value={data.cities.toLocaleString()} label="Cities" loading={isValidating} />
         <MetricCard
           value={data.avgRating != null ? data.avgRating.toFixed(2) : "—"}
           label="Avg Score"
+          loading={isValidating}
         />
         <MetricCard
           value={data.totalReviews ? data.totalReviews.toLocaleString() : "—"}
           label="Total Reviews"
+          loading={isValidating}
         />
       </div>
 
